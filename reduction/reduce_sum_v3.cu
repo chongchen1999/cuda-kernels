@@ -17,10 +17,9 @@ __global__ void sum_kernel(int *data, int *partial_sums) {
     shared_data[threadIdx.x] = sum;
     __syncthreads();
 
-    for(int stride = 1; stride < blockDim.x; stride <<= 1) {
-        int index = 2 * stride * threadIdx.x;
-        if(index < blockDim.x) {
-            shared_data[index] += shared_data[index + stride];
+    for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride) {
+            shared_data[threadIdx.x] += shared_data[threadIdx.x + stride];
         }
         __syncthreads();
     }
@@ -50,8 +49,8 @@ int main() {
     int *device_data;
     cudaMalloc(&device_data, N * sizeof(int));
 
+    constexpr int grid_size = 2048;
     constexpr int block_size = 256;
-    constexpr int grid_size = (N + block_size - 1) / block_size;
 
     dim3 block(block_size);
     dim3 grid(grid_size);

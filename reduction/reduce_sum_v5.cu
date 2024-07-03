@@ -4,6 +4,15 @@
 const int N = 1 << 25; // 2^25 elements
 const int iterations = 5000;
 
+__device__ void warp_reduce(volatile int *shared_data, const int &tid) {
+    shared_data[tid] += shared_data[tid + 32];
+    shared_data[tid] += shared_data[tid + 16];
+    shared_data[tid] += shared_data[tid + 8];
+    shared_data[tid] += shared_data[tid + 4];
+    shared_data[tid] += shared_data[tid + 2];
+    shared_data[tid] += shared_data[tid + 1];
+}
+
 template <int block_size>
 __global__ void sum_kernel(int *data, int *partial_sums) {
     __shared__ int shared_data[block_size];
@@ -11,18 +20,41 @@ __global__ void sum_kernel(int *data, int *partial_sums) {
     int offset = blockDim.x * gridDim.x;
 
     int sum = 0;
-    for (int i = tid; i < N; i += offset) {
+    int i = tid;
+
+    // Unroll the first for-loop
+    while (i < N) {
         sum += data[i];
+        i += offset;
     }
+
     shared_data[threadIdx.x] = sum;
     __syncthreads();
 
-    for(int stride = 1; stride < blockDim.x; stride <<= 1) {
-        int index = 2 * stride * threadIdx.x;
-        if(index < blockDim.x) {
-            shared_data[index] += shared_data[index + stride];
+    // Unroll the second for-loop
+    if (blockDim.x >= 512) {
+        if (threadIdx.x < 256) {
+            shared_data[threadIdx.x] += shared_data[threadIdx.x + 256];
         }
         __syncthreads();
+    }
+
+    if (blockDim.x >= 256) {
+        if (threadIdx.x < 128) {
+            shared_data[threadIdx.x] += shared_data[threadIdx.x + 128];
+        }
+        __syncthreads();
+    }
+
+    if (blockDim.x >= 128) {
+        if (threadIdx.x < 64) {
+            shared_data[threadIdx.x] += shared_data[threadIdx.x + 64];
+        }
+        __syncthreads();
+    }
+
+    if (threadIdx.x < 32) {
+        warp_reduce(shared_data, threadIdx.x);
     }
 
     if (threadIdx.x == 0) {
@@ -50,8 +82,8 @@ int main() {
     int *device_data;
     cudaMalloc(&device_data, N * sizeof(int));
 
+    constexpr int grid_size = 2048;
     constexpr int block_size = 256;
-    constexpr int grid_size = (N + block_size - 1) / block_size;
 
     dim3 block(block_size);
     dim3 grid(grid_size);

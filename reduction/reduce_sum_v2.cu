@@ -4,9 +4,9 @@
 const int N = 1 << 25; // 2^25 elements
 const int iterations = 5000;
 
-template <int shared_memory_size>
+template <int block_size>
 __global__ void sum_kernel(int *data, int *partial_sums) {
-    __shared__ int shared_data[shared_memory_size];
+    __shared__ int shared_data[block_size];
     int tid = threadIdx.x + blockDim.x * blockIdx.x;
     int offset = blockDim.x * gridDim.x;
 
@@ -49,8 +49,8 @@ int main() {
     int *device_data;
     cudaMalloc(&device_data, N * sizeof(int));
 
-    constexpr int grid_size = 2048;
     constexpr int block_size = 256;
+    constexpr int grid_size = (N + block_size - 1) / block_size;
 
     dim3 block(block_size);
     dim3 grid(grid_size);
