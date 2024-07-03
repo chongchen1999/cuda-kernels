@@ -17,10 +17,9 @@ __global__ void sum_kernel(int *data, int *partial_sums) {
     shared_data[threadIdx.x] = sum;
     __syncthreads();
 
-    for(int stride = 1; stride < blockDim.x; stride <<= 1) {
-        int index = 2 * stride * threadIdx.x;
-        if(index < blockDim.x) {
-            shared_data[index] += shared_data[index + stride];
+    for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride) {
+            shared_data[threadIdx.x] += shared_data[threadIdx.x + stride];
         }
         __syncthreads();
     }
