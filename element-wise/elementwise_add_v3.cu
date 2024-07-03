@@ -5,9 +5,16 @@
 const int N = 1 << 25;
 const int iterations = 2000;
 
-__global__ void add_v2(float *a, float *b, float *result) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    result[tid] = a[tid] + b[tid];
+__global__ void add_v3(float *a, float *b, float *result) {
+    int tid = (blockIdx.x * blockDim.x + threadIdx.x) * 4;
+    float4 a_vec = *reinterpret_cast<float4 *>(&a[tid]);
+    float4 b_vec = *reinterpret_cast<float4 *>(&b[tid]);
+    float4 result_vec;
+    result_vec.x = a_vec.x + b_vec.x;
+    result_vec.y = a_vec.y + b_vec.y;
+    result_vec.z = a_vec.z + b_vec.z;
+    result_vec.w = a_vec.w + b_vec.w;
+    *reinterpret_cast<float4 *>(&result[tid]) = result_vec;
 }
 
 bool check_result(float *a, float *b) {
@@ -44,7 +51,7 @@ int main() {
     int block_size = 256;
     int grid_size = (N - 1) / block_size + 1;
 
-    dim3 Grid(grid_size);
+    dim3 Grid(grid_size / 4);
     dim3 Block(block_size);
 
     float milliseconds;
@@ -53,7 +60,7 @@ int main() {
     cudaEventCreate(&stop);
     cudaEventRecord(start);
     for (int i = 0; i < iterations; ++i) {
-        add_v2<<<Grid, Block>>>(device_a, device_b, device_result);
+        add_v3<<<Grid, Block>>>(device_a, device_b, device_result);
     }
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);

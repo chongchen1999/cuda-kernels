@@ -6,8 +6,13 @@ const int N = 1 << 25;
 const int iterations = 2000;
 
 __global__ void add_v2(float *a, float *b, float *result) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    result[tid] = a[tid] + b[tid];
+    int tid = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
+    float2 a_pair = *reinterpret_cast<float2 *>(&a[tid]);
+    float2 b_pair = *reinterpret_cast<float2 *>(&b[tid]);
+    float2 result_pair;
+    result_pair.x = a_pair.x + b_pair.x;
+    result_pair.y = a_pair.y + b_pair.y;
+    *reinterpret_cast<float2 *>(&result[tid]) = result_pair;
 }
 
 bool check_result(float *a, float *b) {
@@ -44,7 +49,7 @@ int main() {
     int block_size = 256;
     int grid_size = (N - 1) / block_size + 1;
 
-    dim3 Grid(grid_size);
+    dim3 Grid(grid_size / 2);
     dim3 Block(block_size);
 
     float milliseconds;
