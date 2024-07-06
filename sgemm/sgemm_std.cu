@@ -421,11 +421,11 @@ namespace gemm_computational_opt {
         __syncthreads();
 
         // first shared to frag
-    #pragma unroll
+    //#pragma unroll
         for (int m = 0; m < TM; m += 4) {
             FETCH_FLOAT4(a_frag[0][m]) = FETCH_FLOAT4(As[0][OFFSET(0, ty + m, BM)]); // 偏移到当前thread tile
         }
-    #pragma unroll
+    //#pragma unroll
         for (int n = 0; n < TN; n += 4) {
             FETCH_FLOAT4(b_frag[0][n]) = FETCH_FLOAT4(Bs[0][OFFSET(0, tx + n, BN)]); // 偏移到当前thread tile
         }
@@ -438,13 +438,13 @@ namespace gemm_computational_opt {
             k += BK;
             // load global to reg
             if (k < K) {
-    #pragma unroll
+    // #pragma unroll
                 for (int i = 0; i < BM; i += a_tile_stride) {
                     int ldg_index = i / a_tile_stride * 4;  // 第ldg_index轮
                     FETCH_FLOAT4(ldg_a_reg[ldg_index]) =
                             FETCH_FLOAT4(A[OFFSET(a_tile_row + i, k + a_tile_col, K)]);
                 }
-    #pragma unroll
+    // #pragma unroll
                 for (int i = 0; i < BK; i += b_tile_stride) {
                     int ldg_index = i / b_tile_stride * 4;  // 第ldg_index轮
                     FETCH_FLOAT4(ldg_b_reg[ldg_index]) =
@@ -453,18 +453,18 @@ namespace gemm_computational_opt {
             }
 
             load_index = write_index ^ 1;
-    #pragma unroll
+    // #pragma unroll
             for (int bk = 0; bk < BK - 1; bk++) {
                 for (int m = 0; m < TM; m += 4) {
                     FETCH_FLOAT4(a_frag[(bk + 1) % 2][m]) = FETCH_FLOAT4(
                             As[load_index][OFFSET(bk + 1, ty + m, BM)]); // 偏移到当前thread tile
                 }
-    #pragma unroll
+    // #pragma unroll
                 for (int n = 0; n < TN; n += 4) {
                     FETCH_FLOAT4(b_frag[(bk + 1) % 2][n]) = FETCH_FLOAT4(
                             Bs[load_index][OFFSET(bk + 1, tx + n, BN)]); // 偏移到当前thread tile
                 }
-    #pragma unroll
+    // #pragma unroll
                 for (int m = 0; m < TM; m++) {
                     for (int n = 0; n < TN; n++) {
                         accum[m][n] += a_frag[bk % 2][m] * b_frag[bk % 2][n];
@@ -472,7 +472,7 @@ namespace gemm_computational_opt {
                 }
             }
             if (k < K) {
-    #pragma unroll
+    //#pragma unroll
                 for (int i = 0; i < BM; i += a_tile_stride) {
                     int ldg_index = i / a_tile_stride * 4;
                     As[write_index][OFFSET(a_tile_col, i + a_tile_row, BM)] = ldg_a_reg[ldg_index];
@@ -480,19 +480,19 @@ namespace gemm_computational_opt {
                     As[write_index][OFFSET(a_tile_col + 2, i + a_tile_row, BM)] = ldg_a_reg[ldg_index + 2];
                     As[write_index][OFFSET(a_tile_col + 3, i + a_tile_row, BM)] = ldg_a_reg[ldg_index + 3];
                 }
-    #pragma unroll
+    //#pragma unroll
                 for (int i = 0; i < BK; i += b_tile_stride) {
                     int ldg_index = i / b_tile_stride * 4;
                     FETCH_FLOAT4(Bs[write_index][OFFSET(b_tile_row + i, b_tile_col, BN)]) =
                             FETCH_FLOAT4(ldg_b_reg[ldg_index]);
                 }
                 __syncthreads();
-    #pragma unroll
+    //#pragma unroll
                 for (int m = 0; m < TM; m += 4) {
                     FETCH_FLOAT4(a_frag[0][m]) = FETCH_FLOAT4(
                             As[write_index][OFFSET(0, ty + m, BM)]); // 偏移到当前thread tile
                 }
-    #pragma unroll
+    //#pragma unroll
                 for (int n = 0; n < TN; n += 4) {
                     FETCH_FLOAT4(b_frag[0][n]) = FETCH_FLOAT4(
                             Bs[write_index][OFFSET(0, tx + n, BN)]); // 偏移到当前thread tile
@@ -500,9 +500,9 @@ namespace gemm_computational_opt {
 
                 write_index ^= 1;
             }
-    #pragma unroll
+    //#pragma unroll
             for (int m = 0; m < TM; m++) {
-    #pragma unroll
+    //#pragma unroll
                 for (int n = 0; n < TN; n++) {
                     accum[m][n] += a_frag[(BK - 1) % 2][m] * b_frag[(BK - 1) % 2][n];
                 }
@@ -512,9 +512,9 @@ namespace gemm_computational_opt {
         } while (k < K);
         
         // C = alpha*AB+C
-    #pragma unroll
+    //#pragma unroll
         for (int m = 0; m < TM; m++) {
-    #pragma unroll
+    //#pragma unroll
             for (int n = 0; n < TN; n += 4) {
                 float4 ctmp = FETCH_FLOAT4(C[OFFSET(ty + m, tx + n, N)]);
                 ctmp.x = alpha * accum[m][n] + beta * ctmp.x;
