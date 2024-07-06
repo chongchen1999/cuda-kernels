@@ -44,9 +44,9 @@ int main() {
         int N = matmul_size;
         int M = matmul_size;
         int K = matmul_size;
-        size_t bytes_a = M * K * sizeof(float);
-        size_t bytes_b = K * N * sizeof(float);
-        size_t bytes_c = M * N * sizeof(float);
+        int bytes_a = M * K * sizeof(float);
+        int bytes_b = K * N * sizeof(float);
+        int bytes_c = M * N * sizeof(float);
 
         // Allocate host memory
         h_A = (float*)malloc(bytes_a);
