@@ -11,7 +11,9 @@ void init_matrix(float *A, int M, int NN, float value = 1.0) {
     }
 }
 
-float sgemm_cublas(float *device_A, float *device_B, float *device_cublas, float *host_cublas, int M, int KK, int NN) {
+float sgemm_cublas(float *device_A, float *device_B, 
+                   float *device_cublas, float *host_cublas, 
+                   int M, int KK, int NN) {
     float alpha = 1.0;
     float beta = 0.0;
 
@@ -39,9 +41,12 @@ float sgemm_cublas(float *device_A, float *device_B, float *device_cublas, float
     return millionseconds;
 }
 
-__device__ __forceinline__ void load_global_to_bufferReg(float * const &buffer, const float * const &A, 
-    const int &bm, const int &bn, const int &M, const int &NN, 
-        const int &start_row, const int &start_col, const int &stride) {
+__device__ __forceinline__ void load_global_to_bufferReg(float * const &buffer, 
+                                                         const float * const &A, 
+                                                         const int &bm, const int &bn, 
+                                                         const int &M, const int &NN, 
+                                                         const int &start_row, const int &start_col, 
+                                                         const int &stride) {
     #pragma unroll
     for (int i = 0; i < bm; i += stride) {
         int offset = i / stride;
@@ -50,9 +55,12 @@ __device__ __forceinline__ void load_global_to_bufferReg(float * const &buffer, 
     }
 }
 
-__device__ __forceinline__ void load_bufferReg_to_shared_a(const float * const &buffer, float * const &shared, 
-    const int &bm, const int &bn, const int &M, const int &NN, 
-        const int &start_row, const int &start_col, const int &stride) {
+__device__ __forceinline__ void load_bufferReg_to_shared_a(const float * const &buffer, 
+                                                           float * const &shared, 
+                                                           const int &bm, const int &bn, 
+                                                           const int &M, const int &NN, 
+                                                           const int &start_row, const int &start_col, 
+                                                           const int &stride) {
     #pragma unroll
     for (int i = 0; i < bm; i += stride) {
         int offset = i / stride;
@@ -64,9 +72,12 @@ __device__ __forceinline__ void load_bufferReg_to_shared_a(const float * const &
     }
 }
 
-__device__ __forceinline__ void load_bufferReg_to_shared_b(const float * const &buffer, float * const &shared, 
-    const int &bm, const int &bn, const int &M, const int &NN, 
-        const int &start_row, const int &start_col, const int &stride) {
+__device__ __forceinline__ void load_bufferReg_to_shared_b(const float * const &buffer, 
+                                                           float * const &shared, 
+                                                           const int &bm, const int &bn, 
+                                                           const int &MM, const int &NN, 
+                                                           const int &start_row, const int &start_col, 
+                                                           const int &stride) {
     #pragma unroll
     for (int i = 0; i < bm; i += stride) {
         int offset = i / stride;
@@ -75,9 +86,10 @@ __device__ __forceinline__ void load_bufferReg_to_shared_b(const float * const &
     }
 }
 
-__device__ __forceinline__ void load_shared_to_reg(float * const &reg, const float * const &shared, 
-    const int &bm, const int &bn, const int &len, 
-        const int &offset_row, const int &offset_col) {
+__device__ __forceinline__ void load_shared_to_reg(float * const &reg, 
+                                                   const float * const &shared, 
+                                                   const int &bm, const int &bn, const int &len, 
+                                                   const int &offset_row, const int &offset_col) {
     #pragma unroll
     for (int i = 0; i < len; i += 4) {
         *(reinterpret_cast<float4 *>(reg + i)) = 
@@ -86,9 +98,10 @@ __device__ __forceinline__ void load_shared_to_reg(float * const &reg, const flo
 }
 
 template <int block_tile_m, int block_tile_n, int block_tile_k, 
-    int thread_tile_m, int thread_tile_n>
+          int thread_tile_m, int thread_tile_n>
 __global__ void sgemm(float *device_A, float *device_B, float *device_C, 
-    int MM, int KK, int NN, float alpha, float beta) {
+                      int MM, int KK, int NN, 
+                      float alpha, float beta) {
     const int tid = threadIdx.x;
     const int number_of_thread_per_row = block_tile_n / thread_tile_n;
     const int number_of_thread_per_col = block_tile_m / thread_tile_m;
@@ -120,15 +133,23 @@ __global__ void sgemm(float *device_A, float *device_B, float *device_C,
     const float *B = device_B + blockIdx.x * block_tile_n;
     float *C = device_C + blockIdx.y * block_tile_m * NN + blockIdx.x * block_tile_n;
 
-    load_global_to_bufferReg(bufferReg_global_to_shared_a, A, block_tile_m, block_tile_k, MM, KK, 
-        global_start_row_a, global_start_col_a, global_stride_a);
-    load_global_to_bufferReg(bufferReg_global_to_shared_b, B, block_tile_k, block_tile_n, KK, NN, 
-        global_start_row_b, global_start_col_b, global_stride_b);
+    load_global_to_bufferReg(bufferReg_global_to_shared_a, A, 
+                             block_tile_m, block_tile_k, 
+                             MM, KK, 
+                             global_start_row_a, global_start_col_a, global_stride_a);
+    load_global_to_bufferReg(bufferReg_global_to_shared_b, B, 
+                             block_tile_k, block_tile_n, 
+                             KK, NN, 
+                             global_start_row_b, global_start_col_b, global_stride_b);
 
-    load_bufferReg_to_shared_a(bufferReg_global_to_shared_a, shared_a[0], block_tile_m, block_tile_k, 
-        MM, KK, global_start_row_a, global_start_col_a, global_stride_a);
-    load_bufferReg_to_shared_b(bufferReg_global_to_shared_b, shared_b[0], block_tile_k, block_tile_n, 
-        KK, NN, global_start_row_b, global_start_col_b, global_stride_b);
+    load_bufferReg_to_shared_a(bufferReg_global_to_shared_a, shared_a[0], 
+                               block_tile_m, block_tile_k, 
+                               MM, KK, 
+                               global_start_row_a, global_start_col_a, global_stride_a);
+    load_bufferReg_to_shared_b(bufferReg_global_to_shared_b, shared_b[0], 
+                               block_tile_k, block_tile_n, 
+                               KK, NN, 
+                               global_start_row_b, global_start_col_b, global_stride_b);
 
     __syncthreads();
 
@@ -141,10 +162,14 @@ __global__ void sgemm(float *device_A, float *device_B, float *device_C,
         load_index_shared ^= 1;
         int next_k = k + block_tile_k;
         if (next_k < KK) {
-            load_global_to_bufferReg(bufferReg_global_to_shared_a, A, block_tile_m, block_tile_k, MM, KK, 
-                global_start_row_a, global_start_col_a + next_k, global_stride_a);
-            load_global_to_bufferReg(bufferReg_global_to_shared_b, B, block_tile_k, block_tile_n, KK, NN,
-                global_start_row_b + next_k, global_start_col_b, global_stride_b);
+            load_global_to_bufferReg(bufferReg_global_to_shared_a, A, 
+                                     block_tile_m, block_tile_k, 
+                                     MM, KK, 
+                                     global_start_row_a, global_start_col_a + next_k, global_stride_a);
+            load_global_to_bufferReg(bufferReg_global_to_shared_b, B, 
+                                     block_tile_k, block_tile_n, 
+                                     KK, NN, 
+                                     global_start_row_b + next_k, global_start_col_b, global_stride_b);
         }
 
         int load_index_reg = 0;
@@ -153,9 +178,11 @@ __global__ void sgemm(float *device_A, float *device_B, float *device_C,
             load_index_reg ^= 1;
             if (s + 1 < block_tile_k) {
                 load_shared_to_reg(shared_to_reg_a[load_index_reg], shared_a[load_index_shared ^ 1], 
-                    block_tile_k, block_tile_m, thread_tile_m, s + 1, thread_y);
+                                   block_tile_k, block_tile_m, thread_tile_m, 
+                                   s + 1, thread_y);
                 load_shared_to_reg(shared_to_reg_b[load_index_reg], shared_b[load_index_shared ^ 1],
-                    block_tile_k, block_tile_n, thread_tile_n, s + 1, thread_x);
+                                   block_tile_k, block_tile_n, thread_tile_n, 
+                                   s + 1, thread_x);
             }
 
             #pragma unroll
@@ -169,16 +196,22 @@ __global__ void sgemm(float *device_A, float *device_B, float *device_C,
         
         if (next_k < KK) {
             load_bufferReg_to_shared_a(bufferReg_global_to_shared_a, shared_a[load_index_shared], 
-                block_tile_m, block_tile_k, MM, KK, global_start_row_a, global_start_col_a, global_stride_a);
+                                       block_tile_m, block_tile_k, 
+                                       MM, KK, 
+                                       global_start_row_a, global_start_col_a, global_stride_a);
             load_bufferReg_to_shared_b(bufferReg_global_to_shared_b, shared_b[load_index_shared], 
-                block_tile_k, block_tile_n, KK, NN, global_start_row_b, global_start_col_b, global_stride_b);
+                                       block_tile_k, block_tile_n, 
+                                       KK, NN, 
+                                       global_start_row_b, global_start_col_b, global_stride_b);
 
             __syncthreads();
 
-            load_shared_to_reg(shared_to_reg_a[0], shared_a[load_index_shared], block_tile_k, block_tile_m, 
-                thread_tile_m, 0, thread_y);
-            load_shared_to_reg(shared_to_reg_b[0], shared_b[load_index_shared], block_tile_k, block_tile_n, 
-                thread_tile_n, 0, thread_x);
+            load_shared_to_reg(shared_to_reg_a[0], shared_a[load_index_shared], 
+                               block_tile_k, block_tile_m, thread_tile_m, 
+                               0, thread_y);
+            load_shared_to_reg(shared_to_reg_b[0], shared_b[load_index_shared], 
+                               block_tile_k, block_tile_n, thread_tile_n, 
+                               0, thread_x);
         }
     }
 
@@ -216,7 +249,8 @@ float sgemm_kernel(float *device_A, float *device_B, float *device_C, float *hos
     cudaEventCreate(&stop);
     cudaEventRecord(start, 0);
     for (int i = 0; i < iterations; ++i) {
-        sgemm<block_tile_m, block_tile_n, block_tile_k, thread_tile_m, thread_tile_n>
+        sgemm<block_tile_m, block_tile_n, block_tile_k, 
+              thread_tile_m, thread_tile_n>
             <<<blocks_per_grid, threads_per_block>>>(device_A, device_B, device_C, MM, KK, NN, alpha, beta);
     }
     cudaEventRecord(stop, 0);
