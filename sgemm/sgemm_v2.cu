@@ -13,7 +13,7 @@ void init_matrix(float *A, int M, int NN, float value = 1.0) {
 
 float sgemm_cublas(float *device_A, float *device_B, 
                    float *device_cublas, float *host_cublas, 
-                   int M, int KK, int NN) {
+                   int MM, int KK, int NN) {
     float alpha = 1.0;
     float beta = 0.0;
 
@@ -24,8 +24,13 @@ float sgemm_cublas(float *device_A, float *device_B,
     cublasHandle_t handle;
     cublasCreate(&handle);
     for (int i = 0; i < iterations; ++i) {
-        cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, NN, M, KK, &alpha, 
-                        device_B, NN, device_A, KK, &beta, device_cublas, NN);
+        cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 
+                    NN, MM, KK, &alpha, 
+                    device_B, NN, 
+                    device_A, KK, 
+                    &beta, 
+                    device_cublas, NN);
+        
     }
     cudaEventRecord(stop, 0);
     cudaEventSynchronize(stop);
@@ -33,11 +38,11 @@ float sgemm_cublas(float *device_A, float *device_B,
     cudaEventElapsedTime(&millionseconds, start, stop);
 
     millionseconds /= iterations;
-    float gflops = (2.0 * M * NN * KK) / (1 << 30) / (millionseconds / 1000.0);
+    float gflops = (2.0 * MM * NN * KK) / (1 << 30) / (millionseconds / 1000.0);
     printf("cublas used time: %f ms\n", millionseconds);
     printf("cublas performance: %f GFLOPS\n", gflops);
 
-    cudaMemcpy(host_cublas, device_cublas, M * NN * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_cublas, device_cublas, MM * NN * sizeof(float), cudaMemcpyDeviceToHost);
     return millionseconds;
 }
 
