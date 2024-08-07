@@ -5,7 +5,7 @@
 const int N = 1 << 25;
 const int iterations = 2000;
 
-__global__ void add_v3(float *a, float *b, float *result) {
+__global__ void addKernel_v4(float *a, float *b, float *result) {
     int tid = (blockIdx.x * blockDim.x + threadIdx.x) * 4;
     float4 a_vec = *reinterpret_cast<float4 *>(&a[tid]);
     float4 b_vec = *reinterpret_cast<float4 *>(&b[tid]);
@@ -17,7 +17,7 @@ __global__ void add_v3(float *a, float *b, float *result) {
     *reinterpret_cast<float4 *>(&result[tid]) = result_vec;
 }
 
-bool check_result(float *a, float *b) {
+bool checkResult(float *a, float *b) {
     for (int i = 0; i < N; ++i) {
         if (a[i] != b[i]) {
             return false;
@@ -60,7 +60,7 @@ int main() {
     cudaEventCreate(&stop);
     cudaEventRecord(start);
     for (int i = 0; i < iterations; ++i) {
-        add_v3<<<Grid, Block>>>(device_a, device_b, device_result);
+        addKernel_v4<<<Grid, Block>>>(device_a, device_b, device_result);
     }
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -68,7 +68,7 @@ int main() {
 
     cudaMemcpy(host_result, device_result, N * sizeof(float), cudaMemcpyDeviceToHost);
 
-    if (!check_result(host_result, cpu_result)) {
+    if (!checkResult(host_result, cpu_result)) {
         printf("Wrong Answer!\n");
     } else {
         printf("Success\n");

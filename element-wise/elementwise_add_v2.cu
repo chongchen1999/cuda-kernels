@@ -15,7 +15,7 @@ __global__ void add_v2(float *a, float *b, float *result) {
     *reinterpret_cast<float2 *>(&result[tid]) = result_pair;
 }
 
-bool check_result(float *a, float *b) {
+bool checkResult(float *a, float *b) {
     for (int i = 0; i < N; ++i) {
         if (a[i] != b[i]) {
             return false;
@@ -66,7 +66,7 @@ int main() {
 
     cudaMemcpy(host_result, device_result, N * sizeof(float), cudaMemcpyDeviceToHost);
 
-    if (!check_result(host_result, cpu_result)) {
+    if (!checkResult(host_result, cpu_result)) {
         printf("Wrong Answer!\n");
     } else {
         printf("Success\n");
