@@ -14,6 +14,7 @@ struct SumOp {
 
 template <typename T, template <typename> class ReductionOp = SumOp>
 __device__ __forceinline__ void warpReduce(T &val) {
+    #pragma unroll
     for (unsigned int mask = 16; mask > 0; mask >>= 1) {
         val = ReductionOp<T>()(val, __shfl_xor_sync(0xffffffff, val, mask));
     }
@@ -43,7 +44,7 @@ template <
     typename T,
     template <typename> class ReductionOp = SumOp
 >
-__global__ void gridReduce(T *data, int N, T *grid_result) {
+__global__ void DeviceReduce(T *data, int N, T *device_result) {
     const int tid = threadIdx.x;
     const int gid = blockIdx.x * blockDim.x + tid;
     const int grid_stride = blockDim.x * gridDim.x;
@@ -57,13 +58,13 @@ __global__ void gridReduce(T *data, int N, T *grid_result) {
     blockReduce<T, ReductionOp>(block_reduced);
 
     if (tid == 0) {
-        atomicAdd(grid_result, block_reduced);
+        atomicAdd(device_result, block_reduced);
     }
 }
 
 int main() {
     const int N = 1 << 25;
-    const int iterations = 1;
+    const int iterations = 1000;
 
     std::srand(233u);
 
@@ -89,10 +90,20 @@ int main() {
     host_gpu_sum = new float(0);
     cudaMalloc(reinterpret_cast<void **>(&device_gpu_sum), sizeof(float));
 
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start);
     for (int i = 0; i < iterations; ++i) {
-        cudaMemcpy(device_gpu_sum, host_gpu_sum, sizeof(float), cudaMemcpyHostToDevice);
-        gridReduce<float><<<grid_shape, block_shape>>>(device_data, N, device_gpu_sum);
+        // cudaMemcpy(device_gpu_sum, host_gpu_sum, sizeof(float), cudaMemcpyHostToDevice);
+        DeviceReduce<float><<<grid_shape, block_shape>>>(device_data, N, device_gpu_sum);
     }
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+    printf("Time: %f ms\n", milliseconds / iterations);
+    
     cudaMemcpy(host_gpu_sum, device_gpu_sum, sizeof(float), cudaMemcpyDeviceToHost);
 
     std::cout << std::fixed << std::setprecision(4); // Set fixed-point notation and precision
@@ -100,8 +111,10 @@ int main() {
     std::cout << "cpu result: " << cpu_sum << std::endl;
     std::cout << "gpu result: " << *host_gpu_sum << std::endl;
 
-    free(host_data);
+    delete[] host_data;
     cudaFree(device_data);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
 
     return 0;
 }
