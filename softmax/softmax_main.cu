@@ -26,12 +26,17 @@ int main() {
     host_cudnn_output = static_cast<float *>(malloc(M * N * sizeof(float)));
     cudaMalloc(reinterpret_cast<void **>(&cudnn_output), M * N * sizeof(float));
 
-    std::cout << "Start cuDNN!" << std::endl;
-    cuDNN::launchSoftmax(device_data, cudnn_output, M, N);
-    cudaMemcpy(host_cudnn_output, cudnn_output, M * N * sizeof(float), cudaMemcpyDeviceToHost);
+    int times = 10000;
 
-    softmax::launchSoftmax(device_data, device_output, M, N);
+    std::cout << "Start cuDNN!" << std::endl;
+    cuDNN::launchSoftmax(device_data, cudnn_output, M, N, times);
+    cudaMemcpy(host_cudnn_output, cudnn_output, M * N * sizeof(float), cudaMemcpyDeviceToHost);
+    std::cout << "cuDNN Done!" << std::endl;
+
+    std::cout << "Start my softmax!" << std::endl;
+    softmax::launchSoftmax(device_data, device_output, M, N, times);
     cudaMemcpy(host_output, device_output, M * N * sizeof(float), cudaMemcpyDeviceToHost);
+    std::cout << "my softmax Done!" << std::endl;
 
     float *cpu_result = static_cast<float *>(malloc(M * N * sizeof(float)));
     cpu_softmax::launchSoftmax(cpu_result, host_data, M, N);

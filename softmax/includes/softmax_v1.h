@@ -1,3 +1,5 @@
+#pragma once
+
 #include <algorithm>
 #include <cstdio>
 
@@ -114,16 +116,27 @@ namespace softmax {
     }
 
     template <typename T>
-    void launchSoftmax(T *input, T *output, int M, int N) {
+    void launchSoftmax(T *input, T *output, int M, int N, int times = 1) {
         const int vec_N = (N + 3) >> 2;
         const int block_size = std::min(512, vec_N);
         const int grid_size = std::min(2048, M);
         dim3 block_shape(block_size);
         dim3 grid_shape(grid_size);
 
-        printf("%d %d\n", block_size, grid_size);
-        softmax_kernel<T, 2048><<<grid_shape, block_shape>>>(input, output, M, N);
-        cudaDeviceSynchronize();
-        printf("Softmax kernel done\n");
+        float elapse = .0f;
+
+        cudaEvent_t start, stop;
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        cudaEventRecord(start);
+        for (int i = 0; i < times; ++ i) {
+            softmax_kernel<T, 2048><<<grid_shape, block_shape>>>(input, output, M, N);
+        }
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        cudaEventElapsedTime(&elapse, start, stop);
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        printf("Softmax: %f ms\n", elapse / times);
     }
 }
