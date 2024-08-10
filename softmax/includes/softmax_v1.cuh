@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cuda_runtime.h>
+#include <iostream>
 
 // using a block to process a row of the matrix
-namespace softmax {
+namespace block_based_softmax {
     template <typename T>
     struct SumOp {
         __device__ __forceinline__ T operator()(const T &a, const T &b) const {
@@ -49,15 +51,15 @@ namespace softmax {
         }
     }
     
-    template <typename T, int shared_size>
-    __global__ void softmax_kernel(T *input, T *output, int M, int N) {
+    template <typename T>
+    __global__ void block_based_softmax(T *input, T *output, int M, int N) {
         // printf("get in!\n");
         const int tid = threadIdx.x;
         const int vec_tid = tid << 2;
         const int block_stride = blockDim.x << 2;
         const int grid_stride = gridDim.x;
 
-        __shared__ T shared_val[shared_size];
+        extern __shared__ T shared_val[];
         __shared__ T block_max;
         __shared__ T block_sum;
 
@@ -117,9 +119,15 @@ namespace softmax {
 
     template <typename T>
     void launchSoftmax(T *input, T *output, int M, int N, int times = 1) {
+        const int total_shared_bytes = 40 * 164 * 1024; // 40 SMs, 164KB per SM;
         const int vec_N = (N + 3) >> 2;
         const int block_size = std::min(512, vec_N);
-        const int grid_size = std::min(2048, M);
+        const int block_shared_bytes = (N + 34) * sizeof(T);
+        const int grid_size = std::min(total_shared_bytes / block_shared_bytes , M);
+        // const int grid_size = 100;
+
+        std::cout << "Softmax: block_size = " << block_size << ", grid_size = " << grid_size << std::endl;
+
         dim3 block_shape(block_size);
         dim3 grid_shape(grid_size);
 
@@ -130,7 +138,7 @@ namespace softmax {
         cudaEventCreate(&stop);
         cudaEventRecord(start);
         for (int i = 0; i < times; ++ i) {
-            softmax_kernel<T, 2048><<<grid_shape, block_shape>>>(input, output, M, N);
+            block_based_softmax<T><<<grid_shape, block_shape, sizeof(T) * N>>>(input, output, M, N);
         }
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);

@@ -48,7 +48,7 @@ namespace softmax {
     }
     
     template <typename T, int shared_size>
-    __global__ void softmax_kernel(T *input, T *output, int M, int N) {
+    __global__ void block_based_softmax(T *input, T *output, int M, int N) {
         const int tid = threadIdx.x;
         const int block_stride = blockDim.x << 2;
         const int grid_stride = gridDim.x;
@@ -106,6 +106,6 @@ namespace softmax {
         const int grid_size = std::min(2048, M);
         dim3 block_shape(block_size);
         dim3 grid_shape(grid_size);
-        softmax_kernel<T, vec_N><<<grid_shape, block_shape>>>(input, output, M, N);
+        block_based_softmax<T, vec_N><<<grid_shape, block_shape>>>(input, output, M, N);
     }
 }
