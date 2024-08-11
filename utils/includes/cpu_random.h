@@ -44,4 +44,17 @@ namespace randomTools {
         return fastUnsignedInt() % 65536;
     }
 
+    template <typename T>
+    void fastRandomFill(T *data, int N, T min, T max) {
+        std::for_each(
+            data, data + N, 
+            [=](T &v) {
+                float r = static_cast<float>(fastUnsignedInt()) / max_unsigned_int;
+                v = min + static_cast<T>(r * (max - min));
+                // printf("%.4f ", v);
+            }
+        );
+        // puts("");
+    }
+
 }
