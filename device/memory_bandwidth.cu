@@ -72,7 +72,8 @@ int main() {
 	cudaEventCreate(&stop);
 	cudaEventRecord(start);
 	for (int i = 0; i < iterations; ++i) {
-        const int offset = offsets[i] * length_per_iter;
+        // const int offset = offsets[i] * length_per_iter;
+        const int offset = i * length_per_iter;
 		memoryBandwidth<<<vec_block_nums, thread_num>>>(
             device_A + offset,
             device_B + offset,
