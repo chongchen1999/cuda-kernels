@@ -16,7 +16,7 @@ int main() {
     host_data = static_cast<float *>(malloc(sizeof(float) * N * M));
     cudaMalloc(reinterpret_cast<void **>(&device_data), sizeof(float) * N * M);
 
-    randomTools::randomFill<float>(host_data, M * N, 0.5f, 1.0f);
+    randomTools::randomFill<float>(host_data, M * N, .0f, 1.0f);
     cudaMemcpy(device_data, host_data, M * N * sizeof(float), cudaMemcpyHostToDevice);
 
     float *host_output_block_based, *host_output_warp_based, *device_output_block_based, *device_output_warp_based;
@@ -41,32 +41,13 @@ int main() {
     cudaMemcpy(host_output_block_based, device_output_block_based, M * N * sizeof(float), cudaMemcpyDeviceToHost);
     std::cout << "Block based softmax Done!" << std::endl << std::endl;
 
-    /* std::cout << "Start warp based softmax!" << std::endl;
+    std::cout << "Start warp based softmax!" << std::endl;
     warpBasedSoftmax::launchSoftmax(device_data, device_output_warp_based, M, N, times);
     cudaMemcpy(host_output_warp_based, device_output_warp_based, M * N * sizeof(float), cudaMemcpyDeviceToHost);
-    std::cout << "Warp based softmax Done!" << std::endl << std::endl; */
+    std::cout << "Warp based softmax Done!" << std::endl << std::endl;
 
     float *cpu_result = static_cast<float *>(malloc(M * N * sizeof(float)));
     cpu_softmax::launchSoftmax(cpu_result, host_data, M, N);
-
-    /*std::cout << "cpu result: " << std::endl;
-    for (int i = 0; i < 8; i++) {
-        printf("%.4f ", cpu_result[i]);
-    }
-    puts("");
-
-    std::cout << "my softmax result: " << std::endl;
-    for (int i = 0; i < 8; i++) {
-        printf("%.4f ", host_output_block_based[i]);
-    }
-    puts("");
-
-    std::cout << "cuDNN softmax result: " << std::endl;
-    for (int i = 0; i < 8; i++) {
-        printf("%.4f ", host_cudnn_output[i]);
-    }
-    puts("");*/
-
 
     if (checkResult(host_output_block_based, host_cudnn_output, N)) {
         std::cout << "Block Test passed!" << std::endl;

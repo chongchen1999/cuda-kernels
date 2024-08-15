@@ -20,6 +20,39 @@ void queryGPUProperties(int device) {
     std::cout << "Maximum Grid Size: (" << prop.maxGridSize[0] << ", " << prop.maxGridSize[1] << ", " << prop.maxGridSize[2] << ")" << std::endl;
     std::cout << "Maximum Block Dimensions: (" << prop.maxThreadsDim[0] << ", " << prop.maxThreadsDim[1] << ", " << prop.maxThreadsDim[2] << ")" << std::endl;
     std::cout << "Compute Capability: " << prop.major << "." << prop.minor << std::endl;
+
+    int sharedMemPerSM;
+    int regsPerSM;
+
+    cudaDeviceGetAttribute(&sharedMemPerSM, cudaDevAttrMaxSharedMemoryPerMultiprocessor, device);
+    cudaDeviceGetAttribute(&regsPerSM, cudaDevAttrMaxRegistersPerMultiprocessor, device);
+
+    std::cout << "Shared memory per SM: " << sharedMemPerSM / 1024 << " K bytes" << std::endl;
+    std::cout << "Registers per SM: " << regsPerSM << std::endl;
+
+     // Query cache configuration
+    cudaFuncCache cacheConfig;
+    cudaDeviceGetCacheConfig(&cacheConfig);
+
+    std::cout << "Cache configuration: ";
+    switch(cacheConfig) {
+        case cudaFuncCachePreferNone:
+            std::cout << "No preference" << std::endl;
+            break;
+        case cudaFuncCachePreferShared:
+            std::cout << "Prefer shared memory over L1 cache" << std::endl;
+            break;
+        case cudaFuncCachePreferL1:
+            std::cout << "Prefer L1 cache over shared memory" << std::endl;
+            break;
+        case cudaFuncCachePreferEqual:
+            std::cout << "Prefer equal partitioning between L1 cache and shared memory" << std::endl;
+            break;
+        default:
+            std::cout << "Unknown configuration" << std::endl;
+            break;
+    }
+
 }
 
 int main() {

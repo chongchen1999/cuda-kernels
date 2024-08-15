@@ -73,10 +73,7 @@ namespace blockBasedSoftmax {
                 max = MaxOp<T>()(max, ival.y);
                 max = MaxOp<T>()(max, ival.z);
                 max = MaxOp<T>()(max, ival.w);
-                shared_val[col] = ival.x;
-                shared_val[col + 1] = ival.y;
-                shared_val[col + 2] = ival.z;
-                shared_val[col + 3] = ival.w;
+                *reinterpret_cast<float4 *>(shared_val + col) = ival;
             }
             blockReduce<T, MaxOp>(max);
             if (tid == 0) {
@@ -119,11 +116,9 @@ namespace blockBasedSoftmax {
 
     template <typename T>
     void launchSoftmax(T *input, T *output, int M, int N, int times = 1) {
-        const int total_shared_bytes = 40 * 164 * 1024; // 40 SMs, 164KB per SM;
         const int vec_N = (N + 3) >> 2;
         const int block_size = std::min(512, vec_N);
-        const int block_shared_bytes = (N + 34) * sizeof(T);
-        const int grid_size = std::min(total_shared_bytes / block_shared_bytes , M);
+        const int grid_size = std::min(128 , M);
         // const int grid_size = 100;
 
         std::cout << "Softmax: block_size = " << block_size << ", grid_size = " << grid_size << std::endl;
