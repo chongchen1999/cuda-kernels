@@ -12,6 +12,9 @@ struct SumOp {
     __device__ __forceinline__ T operator()(const T &a, const T &b) const {
         return a + b;
     }
+    __device__ __forceinline__ void operator()(T *a, const T &b) const {
+        atomicAdd(a, b);    
+    }
 };
 
 template <typename T, template <typename> class ReductionOp = SumOp>
@@ -30,6 +33,7 @@ __device__ void blockReduce(T &val) {
     const int warp_num = (blockDim.x + 31) >> 5;
 
     __shared__ T warp_reduced[32];
+    
     warpReduce<T, ReductionOp>(val);
     if (lane_id == 0) {
         warp_reduced[warp_id] = val;
@@ -60,12 +64,12 @@ __global__ void DeviceReduce(T *data, int N, T *device_result) {
     blockReduce<T, ReductionOp>(block_reduced);
 
     if (tid == 0) {
-        atomicAdd(device_result, block_reduced);
+        ReductionOp<T>()(device_result, block_reduced);
     }
 }
 
 int main() {
-    const int N = 1 << 25;
+    const int N = 8192;
     const int iterations = 1000;
 
     std::srand(233u);
@@ -75,12 +79,8 @@ int main() {
     cudaMalloc(reinterpret_cast<void **>(&device_data), sizeof(float) * N);
 
     float cpu_sum = 0.f;
-    for (int i = 0; i < N; ++i) {
-        float &x = host_data[i];
-        // x = std::pow(2, -16);
-        x = static_cast<float>(randomTools::fastUnsignedShort()) / 65536.f;
-        cpu_sum += x;
-    }
+    randomTools::randomFill(host_data, N, 0.f, 1.f, 666);
+    std::for_each(host_data, host_data + N, [&cpu_sum](float &val) { cpu_sum += val; });
     std::cout << "cpu sum: " << cpu_sum << std::endl;
     cudaMemcpy(device_data, host_data, sizeof(float) * N, cudaMemcpyHostToDevice);
 
