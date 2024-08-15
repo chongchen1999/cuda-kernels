@@ -6,7 +6,7 @@
 #include <iostream>
 
 // using a block to process a row of the matrix
-namespace block_based_softmax {
+namespace blockBasedSoftmax {
     template <typename T>
     struct SumOp {
         __device__ __forceinline__ T operator()(const T &a, const T &b) const {
@@ -52,7 +52,7 @@ namespace block_based_softmax {
     }
     
     template <typename T>
-    __global__ void block_based_softmax(T *input, T *output, int M, int N) {
+    __global__ void blockBasedSoftmax(T *input, T *output, int M, int N) {
         // printf("get in!\n");
         const int tid = threadIdx.x;
         const int vec_tid = tid << 2;
@@ -138,7 +138,7 @@ namespace block_based_softmax {
         cudaEventCreate(&stop);
         cudaEventRecord(start);
         for (int i = 0; i < times; ++ i) {
-            block_based_softmax<T><<<grid_shape, block_shape, sizeof(T) * N>>>(input, output, M, N);
+            blockBasedSoftmax<T><<<grid_shape, block_shape, sizeof(T) * N>>>(input, output, M, N);
         }
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);

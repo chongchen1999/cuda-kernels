@@ -5,7 +5,7 @@
 #include <cuda_runtime.h>
 
 // using a warp to process a row of the matrix
-namespace warp_based_softmax {
+namespace warpBasedSoftmax {
     template <typename T>
     struct SumOp {
         __device__ __forceinline__ T operator()(const T &a, const T &b) const {
@@ -31,7 +31,7 @@ namespace warp_based_softmax {
     }
 
     template <typename T, int size>
-    __global__ void warp_based_softmax(T *input, T *output, int M, int N) {
+    __global__ void warpBasedSoftmax(T *input, T *output, int M, int N) {
         const int tid = threadIdx.x;
         const int warp_id = tid >> 5;
         const int lane_id = tid & 31;
@@ -96,7 +96,7 @@ namespace warp_based_softmax {
         cudaEventCreate(&stop);
         cudaEventRecord(start);
         for (int i = 0; i < times; ++ i) {
-            warp_based_softmax<T, 128><<<grid_shape, block_shape>>>(input, output, M, N);
+            warpBasedSoftmax<T, 128><<<grid_shape, block_shape>>>(input, output, M, N);
         }
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);

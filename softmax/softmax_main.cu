@@ -37,12 +37,12 @@ int main() {
     std::cout << "cuDNN Done!" << std::endl << std::endl;
 
     std::cout << "Start block based softmax!" << std::endl;
-    block_based_softmax::launchSoftmax(device_data, device_output_block_based, M, N, times);
+    blockBasedSoftmax::launchSoftmax(device_data, device_output_block_based, M, N, times);
     cudaMemcpy(host_output_block_based, device_output_block_based, M * N * sizeof(float), cudaMemcpyDeviceToHost);
     std::cout << "Block based softmax Done!" << std::endl << std::endl;
 
     /* std::cout << "Start warp based softmax!" << std::endl;
-    warp_based_softmax::launchSoftmax(device_data, device_output_warp_based, M, N, times);
+    warpBasedSoftmax::launchSoftmax(device_data, device_output_warp_based, M, N, times);
     cudaMemcpy(host_output_warp_based, device_output_warp_based, M * N * sizeof(float), cudaMemcpyDeviceToHost);
     std::cout << "Warp based softmax Done!" << std::endl << std::endl; */
 
