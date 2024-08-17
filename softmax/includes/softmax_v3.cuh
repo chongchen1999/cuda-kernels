@@ -4,6 +4,9 @@
 #include <cstdio>
 #include <cuda_runtime.h>
 #include <iostream>
+#include <map>
+#include <cmath>
+#include <functional>
 
 // using a block to process a row of the matrix
 namespace blockBasedSoftmax {
@@ -51,29 +54,30 @@ namespace blockBasedSoftmax {
         }
     }
     
-    template <typename T>
-    __global__ void blockBasedSoftmax(T *input, T *output, int M, int N) {
+    template <typename T, int nums_per_thread>
+    __global__ void blockBasedSoftmax(const T *input, T *output, const int M, const int N) {
         // printf("get in!\n");
         const int tid = threadIdx.x;
         const int vec_tid = tid << 2;
         const int block_stride = blockDim.x << 2;
         const int grid_stride = gridDim.x;
 
-        extern __shared__ T shared_val[];
         __shared__ T block_max;
         __shared__ T block_sum;
+        float4 data[nums_per_thread];
 
         #pragma unroll
         for (int row = blockIdx.x; row < M; row += grid_stride) {
             T max = MaxOp<T>::identity;
+
             #pragma unroll
-            for (int col = vec_tid; col < N; col += block_stride) {
-                float4 ival = *reinterpret_cast<float4 *>(input + row * N + col);
+            for (int col = vec_tid, idx = 0; col < N; col += block_stride, ++idx) {
+                const float4 ival = *reinterpret_cast<const float4 *>(input + row * N + col);
                 max = MaxOp<T>()(max, ival.x);
                 max = MaxOp<T>()(max, ival.y);
                 max = MaxOp<T>()(max, ival.z);
                 max = MaxOp<T>()(max, ival.w);
-                *reinterpret_cast<float4 *>(shared_val + col) = ival;
+                data[idx] = ival;
             }
             blockReduce<T, MaxOp>(max);
             if (tid == 0) {
@@ -84,8 +88,8 @@ namespace blockBasedSoftmax {
 
             T sum = SumOp<T>::identity;
             #pragma unroll
-            for (int i = vec_tid; i < N; i += block_stride) {
-                float4 &ival = *reinterpret_cast<float4 *>(shared_val + i);
+            for (int i = vec_tid, idx = 0; i < N; i += block_stride, ++idx) {
+                float4 &ival = data[idx];
                 ival.x = exp(ival.x - max);
                 ival.y = exp(ival.y - max);
                 ival.z = exp(ival.z - max);
@@ -103,9 +107,9 @@ namespace blockBasedSoftmax {
             sum = block_sum;
 
             #pragma unroll
-            for (int col = vec_tid; col < N; col += block_stride) {
+            for (int col = vec_tid, idx = 0; col < N; col += block_stride, ++idx) {
                 float4 &oval = *reinterpret_cast<float4 *>(output + row * N + col);
-                float4 sval = *reinterpret_cast<float4 *>(shared_val + col);
+                const float4 &sval = data[idx];
                 oval.x = sval.x / sum;
                 oval.y = sval.y / sum;
                 oval.z = sval.z / sum;
@@ -115,7 +119,7 @@ namespace blockBasedSoftmax {
     }
 
     template <typename T>
-    void launchSoftmax(T *input, T *output, int M, int N, int times = 1) {
+    void launchSoftmax(const T *input, T *output, const int M, const int N, const int times = 1) {
         const int vec_N = (N + 3) >> 2;
         const int block_size = std::min(256, vec_N);
         const int grid_size = std::min(1024 , M);
@@ -126,14 +130,53 @@ namespace blockBasedSoftmax {
         dim3 block_shape(block_size);
         dim3 grid_shape(grid_size);
 
+        using SoftmaxKernel = std::function<void(const T*, T*, const int, const int, dim3, dim3)>;
+        std::map<int, SoftmaxKernel> kernel_map = {
+            {1, [](const T* input, T* output, int M, int N, dim3 grid, dim3 block) {
+                blockBasedSoftmax<T, 1><<<grid, block>>>(input, output, M, N);
+            }},
+            {2, [](const T* input, T* output, int M, int N, dim3 grid, dim3 block) {
+                blockBasedSoftmax<T, 2><<<grid, block>>>(input, output, M, N);
+            }},
+            {4, [](const T* input, T* output, int M, int N, dim3 grid, dim3 block) {
+                blockBasedSoftmax<T, 4><<<grid, block>>>(input, output, M, N);
+            }},
+            {8, [](const T* input, T* output, int M, int N, dim3 grid, dim3 block) {
+                blockBasedSoftmax<T, 8><<<grid, block>>>(input, output, M, N);
+            }},
+            {16, [](const T* input, T* output, int M, int N, dim3 grid, dim3 block) {
+                blockBasedSoftmax<T, 16><<<grid, block>>>(input, output, M, N);
+            }},
+            {32, [](const T* input, T* output, int M, int N, dim3 grid, dim3 block) {
+                blockBasedSoftmax<T, 32><<<grid, block>>>(input, output, M, N);
+            }},
+            {64, [](const T* input, T* output, int M, int N, dim3 grid, dim3 block) {
+                blockBasedSoftmax<T, 64><<<grid, block>>>(input, output, M, N);
+            }},
+            {128, [](const T* input, T* output, int M, int N, dim3 grid, dim3 block) {
+                blockBasedSoftmax<T, 128><<<grid, block>>>(input, output, M, N);
+            }},
+            {256, [](const T* input, T* output, int M, int N, dim3 grid, dim3 block) {
+                blockBasedSoftmax<T, 256><<<grid, block>>>(input, output, M, N);
+            }}
+        };
+
         float elapse = .0f;
 
+        const int temp = (vec_N + block_size - 1) / block_size;
+        const int nums_per_thread = 1 << static_cast<int>(std::ceil(std::log2(temp)));
+        printf("%d\n", nums_per_thread);
+        auto softmax_kernel = kernel_map.find(nums_per_thread);
+        if (softmax_kernel == kernel_map.end()) {
+            printf("error!");
+            return;
+        }
         cudaEvent_t start, stop;
         cudaEventCreate(&start);
         cudaEventCreate(&stop);
         cudaEventRecord(start);
         for (int i = 0; i < times; ++ i) {
-            blockBasedSoftmax<T><<<grid_shape, block_shape, sizeof(T) * N>>>(input, output, M, N);
+            softmax_kernel->second(input, output, M, N, grid_shape, block_shape);
         }
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);

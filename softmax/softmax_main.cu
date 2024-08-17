@@ -9,7 +9,7 @@
 #include "../utils/includes/check_result.h"
 
 int main() {
-    const int M = 3000;
+    const int M = 5000;
     // const int N = 13996;
     const int N = 8192;
     float *host_data, *device_data;
