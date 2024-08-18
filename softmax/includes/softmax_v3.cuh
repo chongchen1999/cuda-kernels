@@ -9,7 +9,7 @@
 #include <functional>
 
 // using a block to process a row of the matrix
-namespace blockBasedSoftmax {
+namespace blockBasedSoftmax_register {
     template <typename T>
     struct SumOp {
         __device__ __forceinline__ T operator()(const T &a, const T &b) const {
@@ -56,7 +56,6 @@ namespace blockBasedSoftmax {
     
     template <typename T, int nums_per_thread>
     __global__ void blockBasedSoftmax(const T *input, T *output, const int M, const int N) {
-        // printf("get in!\n");
         const int tid = threadIdx.x;
         const int vec_tid = tid << 2;
         const int block_stride = blockDim.x << 2;
@@ -123,7 +122,6 @@ namespace blockBasedSoftmax {
         const int vec_N = (N + 3) >> 2;
         const int block_size = std::min(256, vec_N);
         const int grid_size = std::min(1024 , M);
-        // const int grid_size = 100;
 
         std::cout << "Softmax: block_size = " << block_size << ", grid_size = " << grid_size << std::endl;
 
@@ -165,18 +163,20 @@ namespace blockBasedSoftmax {
 
         const int temp = (vec_N + block_size - 1) / block_size;
         const int nums_per_thread = 1 << static_cast<int>(std::ceil(std::log2(temp)));
-        printf("%d\n", nums_per_thread);
+        printf("nums_per_thread : %d\n", nums_per_thread);
         auto softmax_kernel = kernel_map.find(nums_per_thread);
         if (softmax_kernel == kernel_map.end()) {
             printf("error!");
             return;
         }
+
+        auto functor = softmax_kernel->second;
         cudaEvent_t start, stop;
         cudaEventCreate(&start);
         cudaEventCreate(&stop);
         cudaEventRecord(start);
         for (int i = 0; i < times; ++ i) {
-            softmax_kernel->second(input, output, M, N, grid_shape, block_shape);
+            functor(input, output, M, N, grid_shape, block_shape);
         }
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);

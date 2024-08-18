@@ -1,5 +1,6 @@
 #include "includes/softmax_v1.cuh"
 #include "includes/softmax_v2.cuh"
+#include "includes/softmax_v3.cuh"
 #include <iostream>
 #include <memory>
 #include <algorithm>
@@ -9,9 +10,8 @@
 #include "../utils/includes/check_result.h"
 
 int main() {
-    const int M = 5000;
-    // const int N = 13996;
-    const int N = 8192;
+    const int M = 1000;
+    const int N = 2048;
     float *host_data, *device_data;
     host_data = static_cast<float *>(malloc(sizeof(float) * N * M));
     cudaMalloc(reinterpret_cast<void **>(&device_data), sizeof(float) * N * M);
@@ -36,10 +36,15 @@ int main() {
     cudaMemcpy(host_cudnn_output, cudnn_output, M * N * sizeof(float), cudaMemcpyDeviceToHost);
     std::cout << "cuDNN Done!" << std::endl << std::endl;
 
-    std::cout << "Start block based softmax!" << std::endl;
-    blockBasedSoftmax::launchSoftmax(device_data, device_output_block_based, M, N, times);
+    std::cout << "Start block-register based softmax!" << std::endl;
+    blockBasedSoftmax_register::launchSoftmax(device_data, device_output_block_based, M, N, times);
     cudaMemcpy(host_output_block_based, device_output_block_based, M * N * sizeof(float), cudaMemcpyDeviceToHost);
-    std::cout << "Block based softmax Done!" << std::endl << std::endl;
+    std::cout << "Block-register based softmax Done!" << std::endl << std::endl;
+
+    std::cout << "Start block-shared memory based softmax!" << std::endl;
+    blockBasedSoftmax_shared::launchSoftmax(device_data, device_output_block_based, M, N, times);
+    cudaMemcpy(host_output_block_based, device_output_block_based, M * N * sizeof(float), cudaMemcpyDeviceToHost);
+    std::cout << "Block-shared memory based softmax Done!" << std::endl << std::endl;
 
     std::cout << "Start warp based softmax!" << std::endl;
     warpBasedSoftmax::launchSoftmax(device_data, device_output_warp_based, M, N, times);

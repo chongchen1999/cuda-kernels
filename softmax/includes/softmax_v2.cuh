@@ -39,7 +39,7 @@ namespace warpBasedSoftmax {
 
         const int start_row = warps_per_block * blockIdx.x + warp_id;
         
-        T ival[size];
+        T ival[128];
         #pragma unroll
         for (int row = start_row; row < M; row += warps_per_block * gridDim.x) {
             T max = MaxOp<T>::identity;
@@ -96,7 +96,7 @@ namespace warpBasedSoftmax {
         cudaEventCreate(&stop);
         cudaEventRecord(start);
         for (int i = 0; i < times; ++ i) {
-            warpBasedSoftmax<T, 128><<<grid_shape, block_shape>>>(input, output, M, N);
+            warpBasedSoftmax<T, 64><<<grid_shape, block_shape>>>(input, output, M, N);
         }
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);

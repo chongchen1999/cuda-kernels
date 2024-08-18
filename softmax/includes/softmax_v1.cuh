@@ -6,7 +6,7 @@
 #include <iostream>
 
 // using a block to process a row of the matrix
-namespace blockBasedSoftmax {
+namespace blockBasedSoftmax_shared {
     template <typename T>
     struct SumOp {
         __device__ __forceinline__ T operator()(const T &a, const T &b) const {
