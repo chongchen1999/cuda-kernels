@@ -6,7 +6,7 @@ from matmul.matmul import matmul
 @triton.testing.perf_report(
     triton.testing.Benchmark(
         x_names=['M', 'N', 'K'],  
-        x_vals=[128 * i for i in range(2, 8)],  
+        x_vals=[128 * i for i in range(2, 20)],  
         line_arg='provider',  
         line_vals=['cublas', 'triton'],  
         line_names=["cuBLAS", "Triton"],  
