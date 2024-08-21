@@ -10,7 +10,7 @@
 #include "../utils/includes/check_result.h"
 
 int main() {
-    const int M = 1000;
+    const int M = 3000;
     const int N = 2048;
     float *host_data, *device_data;
     host_data = static_cast<float *>(malloc(sizeof(float) * N * M));
