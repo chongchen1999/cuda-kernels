@@ -6,7 +6,7 @@ from src.softmax_torch import naive_softmax
 @triton.testing.perf_report(
     triton.testing.Benchmark(
         x_names=['N'],  # 用作图表x轴的参数名
-        x_vals=[128 * i for i in range(2, 10)],  # `x_name`的不同可能值
+        x_vals=[128 * i for i in range(2, 50)],  # `x_name`的不同可能值
         line_arg='provider',  # 其值对应图表中不同线条的参数名
         line_vals=[
             'triton',
