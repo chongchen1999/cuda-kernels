@@ -1,7 +1,7 @@
 #include <bits/stdc++.h>
 #include <cuda_runtime.h>
 
-const int N = 1 << 25; // 2^25 elements
+const int seq_len = 1 << 25; // 2^25 elements
 const int iterations = 1000;
 const int warp_size = 32;
 
@@ -30,7 +30,7 @@ __global__ void sum_kernel(float *data, float *partial_sums) {
     int offset = blockDim.x * gridDim.x;
 
     float sum = 0;
-    for (int i = tid; i < N; i += offset) {
+    for (int i = tid; i < seq_len; i += offset) {
         sum += data[i];
     }
 
@@ -61,9 +61,9 @@ void get_sum(const float *data, const int &N, float &sum) {
 
 int main() {
     std::srand(static_cast<unsigned>(std::time(nullptr)));
-    float *host_data = (float *)malloc(N * sizeof(float));
+    float *host_data = (float *)malloc(seq_len * sizeof(float));
     float cpu_sum = 0;
-    for (int i = 0; i < N; ++i) {
+    for (int i = 0; i < seq_len; ++i) {
         float random_float = static_cast<float>(std::rand()) / RAND_MAX * 57.0f;
         host_data[i] = random_float;
         cpu_sum += random_float;
@@ -71,7 +71,7 @@ int main() {
     printf("CPU sum: %f\n", cpu_sum);
 
     float *device_data;
-    cudaMalloc(&device_data, N * sizeof(float));
+    cudaMalloc(&device_data, seq_len * sizeof(float));
 
     constexpr int grid_size = 1024;
     constexpr int block_size = 1024;
@@ -83,7 +83,7 @@ int main() {
     float *device_partial_sums;
     cudaMalloc(&device_partial_sums, grid_size * sizeof(float));
 
-    cudaMemcpy(device_data, host_data, N * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(device_data, host_data, seq_len * sizeof(float), cudaMemcpyHostToDevice);
 
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
@@ -109,7 +109,7 @@ int main() {
     }
 
     // Calculate Bandwidth
-    float total_data_transferred = N * sizeof(float) + grid_size * sizeof(float); // in bytes
+    float total_data_transferred = seq_len * sizeof(float) + grid_size * sizeof(float); // in bytes
     float average_time_per_iteration = milliseconds / iterations / 1000; // in seconds
     float bandwidth = total_data_transferred / average_time_per_iteration / (1 << 30); // in GB/s
 

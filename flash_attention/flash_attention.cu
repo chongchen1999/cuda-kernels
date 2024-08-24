@@ -2,115 +2,147 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-__global__
-void forward_kernel(const float* Q, const float* K, const float* V, const int N, const int d,
-                    const int Tc, const int Tr, const int Bc, const int Br, const float softmax_scale,
-                    float* l, float *m, float* O) {
-    int tx = threadIdx.x;
-    int bx = blockIdx.x; int by = blockIdx.y;  // batch and head index
+/*
+    dim3 grid_dim(batch_size, head_num);  // batch_size x num_heads
+    dim3 block_dim(tile_width_q);  // tile_width_q threads per block
+*/
 
-    // Offset into Q,K,V,O,l,m - different for each batch and head
-    int qkv_offset = (bx * gridDim.y * N * d) + (by * N * d);  // gridDim.y = nh
-    int lm_offset = (bx * gridDim.y * N) + (by * N);  // offset for l and m
+__global__ void forward_kernel(
+    const float *Q, const float *K, const float *V, // [bs, num_heads, N, d]
+    float *O, // [bs, num_heads, N]
+    const int N, const int d,
+    const int tile_num_q, const int tile_num_kv, 
+    const int tile_width_q, const int tile_width_kv, 
+    const float softmax_scale,
+    float *exp_sum, float *val_max // [bs, num_heads, N]
+) {
+    const int tid = threadIdx.x;
+    const int batch_idx = blockIdx.x; 
+    const int head_idx = blockIdx.y;
+    const int head_num = gridDim.y;
 
-    // Define SRAM for Q,K,V,S
+    // Offset into Q,K,V,O,exp_sum,val_max - different for each batch and head
+    const int qkv_base_offset = (batch_idx * head_num * N * d) + (head_idx * N * d);
+    const int lm_base_offset = (batch_idx * head_num * N) + (head_idx * N);  // offset for exp_sum and val_max
+
+    // Define SRAM for Q,K,V,P
     extern __shared__ float sram[];
-    int tile_size = Bc * d;  // size of Qi, Kj, Vj
-    float* Qi = sram;
-    float* Kj = &sram[tile_size];
-    float* Vj = &sram[tile_size * 2];
-    float* S = &sram[tile_size * 3];
+    const int tile_size_q = tile_width_q * d;
+    const int tile_size_kv = tile_width_kv * d;
+    float *Qi = sram;
+    float *Kj = &sram[tile_size_q];
+    float *Vj = &sram[tile_size_q + tile_size_kv];
+    float *P = &sram[tile_size_q + 2 * tile_size_kv]; // P = QiKi^T
 
-    for (int j = 0; j < Tc; j++) {
-
-        // Load Kj, Vj to SRAM
-        for (int x = 0; x < d; x++) {
-            Kj[(tx * d) + x] = K[qkv_offset + (tile_size * j) + (tx * d) + x];
-            Vj[(tx * d) + x] = V[qkv_offset + (tile_size * j) + (tx * d) + x];
+    for (int j = 0; j < tile_num_kv; j++) {
+        // Load Kj, Vj to SRAM, make sure d can be divided by 4
+        #pragma unroll
+        for (int x = 0; x < d; x += 4) {
+            const int head_offset = tid * d + x;
+            const int kv_offset = qkv_base_offset + (tile_size_kv * j) + head_offset;
+            *reinterpret_cast<float4 *>(Kj + head_offset) = *reinterpret_cast<const float4 *>(K + kv_offset);
+            *reinterpret_cast<float4 *>(Vj + head_offset) = *reinterpret_cast<const float4 *>(V + kv_offset);
         }
-        __syncthreads();  // such that the inner loop can use the correct Kj, Vj
+        __syncthreads();
 
-        for (int i = 0; i < Tr; i++)  {
-
-            // Load Qi to SRAM, l and m to registers
-            for (int x = 0; x < d; x++) {
-                Qi[(tx * d) + x] = Q[qkv_offset + (tile_size * i) + (tx * d) + x];
+        for (int i = 0; i < tile_num_q; i++)  {
+            // Load Qi to SRAM, exp_sum and val_max to registers
+            for (int x = 0; x < d; x += 4) {
+                const int head_offset = tid * d + x;
+                *reinterpret_cast<float4 *>(Qi + head_offset) = 
+                    *reinterpret_cast<const float4 *>(Q + qkv_base_offset + (tile_size_q * i) + head_offset);
             }
-            float row_m_prev = m[lm_offset + (Br * i) + tx];
-            float row_l_prev = l[lm_offset + (Br * i) + tx];
 
-            // S = QK^T, row_m = rowmax(S)
-            float row_m = -INFINITY;
-            for (int y = 0; y < Bc; y++) {
+            const int lm_offset = lm_base_offset + (tile_width_kv * i) + tid;
+            float row_m_max_prev = val_max[lm_offset];
+            float row_exp_sum_prev = exp_sum[lm_offset];
+
+            // P = QK^T, row_max = rowmax(P)
+            float row_max = -INFINITY;
+            for (int y = 0; y < tile_width_kv; y++) {
                 float sum = 0;
                 for (int x = 0; x < d; x++) {
-                    sum += Qi[(tx * d) + x] * Kj[(y * d) + x];
+                    sum += Qi[(tid * d) + x] * Kj[(y * d) + x];
                 }
                 sum *= softmax_scale;
-                S[(Bc * tx) + y] = sum;
+                P[(tile_width_kv * tid) + y] = sum;
 
-                if (sum > row_m)
-                    row_m = sum;
+                if (sum > row_max) {
+                    row_max = sum;
+                }
             }
 
-            // P = exp(S - row_m), row_l = rowsum(P)
+            // P = exp(P - row_max), row_l = rowsum(P)
             float row_l = 0;
-            for (int y = 0; y < Bc; y++) {
-                S[(Bc * tx) + y] = __expf(S[(Bc * tx) + y] - row_m);
-                row_l += S[(Bc * tx) + y];
+            for (int y = 0; y < tile_width_q; y++) {
+                float &p = P[(tile_width_q * tid) + y];
+                p = __expf(p - row_max);
+                row_l += p;
             }
 
-            // Compute new m and l
-            float row_m_new = max(row_m_prev, row_m);
-            float row_l_new = (__expf(row_m_prev - row_m_new) * row_l_prev) + (__expf(row_m - row_m_new) * row_l);
+            // Compute new val_max and exp_sum
+            const float row_m_new = max(row_m_max_prev, row_max);
+            const float row_l_new = __expf(row_m_max_prev - row_m_new) * row_exp_sum_prev + __expf(row_max - row_m_new) * row_l;
 
-            // Write O, l, m to HBM
+            // Write O, exp_sum, val_max to HBM
             for (int x = 0; x < d; x++) {
                 float pv = 0;  // Pij * Vj
-                for (int y = 0; y < Bc; y++) {
-                    pv += S[(Bc * tx) + y] * Vj[(y * d) + x];
+                for (int y = 0; y < tile_width_q; y++) {
+                    pv += P[(tile_width_q * tid) + y] * Vj[(y * d) + x];
                 }
-                O[qkv_offset + (tile_size * i) + (tx * d) + x] = (1 / row_l_new) \
-                    * ((row_l_prev * __expf(row_m_prev - row_m_new) * O[qkv_offset + (tile_size * i) + (tx * d) + x]) \
-                    + (__expf(row_m - row_m_new) * pv));
+                const int O_offset = qkv_base_offset + (tile_size_q * i) + (tid * d) + x;
+                O[O_offset] = (1.0f / row_l_new) * 
+                    (row_exp_sum_prev * __expf(row_m_max_prev - row_m_new) * O[O_offset] + __expf(row_max - row_m_new) * pv);
             }
-            m[lm_offset + (Br * i) + tx] = row_m_new;
-            l[lm_offset + (Br * i) + tx] = row_l_new;
+            val_max[lm_offset] = row_m_new;
+            exp_sum[lm_offset] = row_l_new;
         }
         __syncthreads();  // otherwise, thread can use the wrong Kj, Vj in inner loop
     }
 }
 
 torch::Tensor forward(torch::Tensor Q, torch::Tensor K, torch::Tensor V) {
-    // TODO: determine Bc, Br dynamically
-    const int Bc = 32; const int Br = 32;
+    // TODO: determine tile_width_q, tile_width_kv dynamically
+    const int tile_width_q = 32; 
+    const int tile_width_kv = 32;
 
-    const int B = Q.size(0); const int nh = Q.size(1);
-    const int N = Q.size(2); const int d = Q.size(3);
+    const int batch_size = Q.size(0); 
+    const int head_num = Q.size(1);
+    const int seq_len = Q.size(2); 
+    const int head_size = Q.size(3);
 
-    const int Tc = ceil((float) N / Bc); const int Tr = ceil((float) N / Br);
-    const float softmax_scale = 1.0 / sqrt(d);
+    const int tile_num_q = ceil((float)seq_len / tile_width_q); 
+    const int tile_num_kv = ceil((float)seq_len / tile_width_kv);
+    const float softmax_scale = 1.0 / sqrt(head_size);
 
-    // Initialize O, l, m to HBM
+    // Initialize O, exp_sum, val_max to HBM
     auto O = torch::zeros_like(Q);
-    auto l = torch::zeros({B, nh, N});
-    auto m = torch::full({B, nh, N}, -INFINITY);
+    auto exp_sum = torch::zeros({batch_size, head_num, seq_len});
+    auto val_max = torch::full({batch_size, head_num, seq_len}, -INFINITY);
     torch::Device device(torch::kCUDA);
-    l = l.to(device); m = m.to(device);
+    exp_sum = exp_sum.to(device); 
+    val_max = val_max.to(device);
 
     // Calculate SRAM size needed per block
-    const int sram_size = (3 * Bc * d * sizeof(float)) + (Bc * Br * sizeof(float));
+    const int tile_size_q = tile_width_q * head_size;
+    const int tile_size_kv = tile_width_kv * head_size;
+    const int tile_size_s = tile_width_q * tile_width_kv; // s = qk^T
+    const int sram_bytes = sizeof(float) * (tile_size_q + 2 * tile_size_kv + tile_size_s);
     int max_sram_size;
     cudaDeviceGetAttribute(&max_sram_size, cudaDevAttrMaxSharedMemoryPerBlock, 0);
-    printf("Max shared memory: %d, requested shared memory: %d \\n", max_sram_size, sram_size);
+    printf("Max shared memory: %d, requested shared memory: %d \n", max_sram_size, sram_bytes);
 
-    dim3 grid_dim(B, nh);  // batch_size x num_heads
-    dim3 block_dim(Bc);  // Bc threads per block
+    dim3 grid_dim(batch_size, head_num);  // batch_size x num_heads
+    dim3 block_dim(tile_width_q);  // tile_width_q threads per block
 
-    forward_kernel<<<grid_dim, block_dim, sram_size>>>(
-        Q.data_ptr<float>(), K.data_ptr<float>(), V.data_ptr<float>(),
-        N, d, Tc, Tr, Bc, Br, softmax_scale,
-        l.data_ptr<float>(), m.data_ptr<float>(), O.data_ptr<float>()
+    forward_kernel<<<grid_dim, block_dim, sram_bytes>>>(
+        Q.data_ptr<float>(), K.data_ptr<float>(), V.data_ptr<float>(), 
+        O.data_ptr<float>(),
+        seq_len, head_size, 
+        tile_num_q, tile_num_kv, 
+        tile_width_q, tile_width_kv, 
+        softmax_scale,
+        exp_sum.data_ptr<float>(), val_max.data_ptr<float>()
     );
     return O;
 }

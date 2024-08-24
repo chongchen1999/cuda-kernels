@@ -3,7 +3,7 @@
 #include <ctime>
 
 const int S = 1 << 10;
-const int N = S;
+const int seq_len = S;
 const int K = S;
 const int M = S;
 
@@ -64,46 +64,46 @@ int main() {
     srand(time(nullptr));
 
     // Allocate host memory
-    float* host_A = (float*)malloc(N * K * sizeof(float));
+    float* host_A = (float*)malloc(seq_len * K * sizeof(float));
     float* host_B = (float*)malloc(K * M * sizeof(float));
-    float* host_C_cpu = (float*)malloc(N * M * sizeof(float));
-    float* host_C_gpu = (float*)malloc(N * M * sizeof(float));
+    float* host_C_cpu = (float*)malloc(seq_len * M * sizeof(float));
+    float* host_C_gpu = (float*)malloc(seq_len * M * sizeof(float));
 
     // Initialize matrices
-    initialize_matrix(host_A, N, K);
+    initialize_matrix(host_A, seq_len, K);
     initialize_matrix(host_B, K, M);
 
     // Allocate device memory
     float *device_A, *device_B, *device_C;
-    cudaMalloc(&device_A, N * K * sizeof(float));
+    cudaMalloc(&device_A, seq_len * K * sizeof(float));
     cudaMalloc(&device_B, K * M * sizeof(float));
-    cudaMalloc(&device_C, N * M * sizeof(float));
+    cudaMalloc(&device_C, seq_len * M * sizeof(float));
 
     // Copy matrices to device
-    cudaMemcpy(device_A, host_A, N * K * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(device_A, host_A, seq_len * K * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(device_B, host_B, K * M * sizeof(float), cudaMemcpyHostToDevice);
 
     // Define block and grid sizes
     dim3 Block(16, 16);
-    dim3 Grid((N + Block.x - 1) / Block.x, (N + Block.y - 1) / Block.y);
+    dim3 Grid((seq_len + Block.x - 1) / Block.x, (seq_len + Block.y - 1) / Block.y);
 
     // Launch the kernel
-    sgemm_kernel<<<Grid, Block>>> (device_A, device_B, device_C, N, K, M);
+    sgemm_kernel<<<Grid, Block>>> (device_A, device_B, device_C, seq_len, K, M);
 
     // Copy result back to host
-    cudaMemcpy(host_C_gpu, device_C, N * M * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_C_gpu, device_C, seq_len * M * sizeof(float), cudaMemcpyDeviceToHost);
 
     // Perform SGEMM on CPU
-    sgemm_cpu(host_A, host_B, host_C_cpu, N, K, M);
+    sgemm_cpu(host_A, host_B, host_C_cpu, seq_len, K, M);
 
     // Check results
-    if (check_result(host_C_cpu, host_C_gpu, N, M)) {
+    if (check_result(host_C_cpu, host_C_gpu, seq_len, M)) {
         std::cout << "SGEMM implementation is correct!" << std::endl;
     } else {
         std::cout << "SGEMM implementation is incorrect!" << std::endl;
-        matrix_print(host_C_cpu, N, M);
+        matrix_print(host_C_cpu, seq_len, M);
         printf("\n");
-        matrix_print(host_C_gpu, N, M);
+        matrix_print(host_C_gpu, seq_len, M);
     }
 
     // Free memory
