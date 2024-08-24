@@ -1,3 +1,6 @@
+import os
+os.environ['TORCH_CUDA_ARCH_LIST'] = '8.6'
+
 import math
 
 import torch
@@ -10,8 +13,8 @@ print('loading')
 flash_attention = load(name='flash_attention', sources=['main.cpp', 'flash_attention.cu'], extra_cuda_cflags=['-O2'])
 
 # Use small model params, otherwise slower than manual attention. See caveats in README.
-batch_size = 16
-head_num = 12
+batch_size = 1000
+head_num = 32
 seq_len = 64
 head_size = 64
 
@@ -40,7 +43,7 @@ with torch.autograd.profiler.profile(use_device='cuda') as prof:
     flash_attention_result = flash_attention.forward(q, k, v)
 print(prof.key_averages().table(sort_by='cuda_time_total', row_limit=10))
 
-# print(manual_result)
-# print(flash_attention_result)
+print(manual_result.shape)
+print(flash_attention_result.shape)
 
-print('attn values sanity check:', torch.allclose(flash_attention_result, manual_result, rtol=0, atol=1e-02))
+print('Attention values sanity check:', torch.allclose(flash_attention_result, manual_result, rtol=1e-4, atol=1e-3))

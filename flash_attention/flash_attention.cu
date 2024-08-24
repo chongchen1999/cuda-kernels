@@ -34,23 +34,22 @@ __global__ void forward_kernel(
     float *Vj = &sram[tile_size_q + tile_size_kv];
     float *P = &sram[tile_size_q + 2 * tile_size_kv]; // P = QiKi^T
 
-    for (int j = 0; j < tile_num_kv; j++) {
-        // Load Kj, Vj to SRAM, make sure d can be divided by 4
+    for (int i = 0; i < tile_num_q; i++) {
         #pragma unroll
         for (int x = 0; x < d; x += 4) {
             const int head_offset = tid * d + x;
-            const int kv_offset = qkv_base_offset + (tile_size_kv * j) + head_offset;
-            *reinterpret_cast<float4 *>(Kj + head_offset) = *reinterpret_cast<const float4 *>(K + kv_offset);
-            *reinterpret_cast<float4 *>(Vj + head_offset) = *reinterpret_cast<const float4 *>(V + kv_offset);
+            *reinterpret_cast<float4 *>(Qi + head_offset) = 
+                *reinterpret_cast<const float4 *>(Q + qkv_base_offset + (tile_size_q * i) + head_offset);
         }
         __syncthreads();
 
-        for (int i = 0; i < tile_num_q; i++)  {
-            // Load Qi to SRAM, exp_sum and val_max to registers
+        for (int j = 0; j < tile_num_kv; j++)  {
+            #pragma unroll
             for (int x = 0; x < d; x += 4) {
                 const int head_offset = tid * d + x;
-                *reinterpret_cast<float4 *>(Qi + head_offset) = 
-                    *reinterpret_cast<const float4 *>(Q + qkv_base_offset + (tile_size_q * i) + head_offset);
+                const int kv_offset = qkv_base_offset + (tile_size_kv * j) + head_offset;
+                *reinterpret_cast<float4 *>(Kj + head_offset) = *reinterpret_cast<const float4 *>(K + kv_offset);
+                *reinterpret_cast<float4 *>(Vj + head_offset) = *reinterpret_cast<const float4 *>(V + kv_offset);
             }
 
             const int lm_offset = lm_base_offset + (tile_width_kv * i) + tid;
