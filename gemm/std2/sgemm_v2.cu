@@ -49,7 +49,7 @@ float sgemm_cublas(
     return millionseconds;
 }
 
-__device__ __forceinline__ void load_global_to_bufferReg(
+__device__ __forceinline__ void load_global_to_register(
     float *const &buffer, 
     const float * const &A, 
     const int &bm, const int &bn, 
@@ -64,7 +64,7 @@ __device__ __forceinline__ void load_global_to_bufferReg(
     }
 }
 
-__device__ __forceinline__ void load_bufferReg_to_shared_a(
+__device__ __forceinline__ void load_register_to_shared_a(
     const float *const &buffer, 
     float *const &shared, 
     const int &bm, const int &bn, 
@@ -82,7 +82,7 @@ __device__ __forceinline__ void load_bufferReg_to_shared_a(
     }
 }
 
-__device__ __forceinline__ void load_bufferReg_to_shared_b(
+__device__ __forceinline__ void load_register_to_shared_b(
     const float * const &buffer, 
     float * const &shared, 
     const int &bm, const int &bn, 
@@ -97,7 +97,7 @@ __device__ __forceinline__ void load_bufferReg_to_shared_b(
     }
 }
 
-__device__ __forceinline__ void load_shared_to_reg(
+__device__ __forceinline__ void load_shared_to_register(
     float * const &reg, 
     const float * const &shared, 
     const int &bm, const int &bn, const int &len, 
@@ -150,26 +150,26 @@ __global__ void sgemm(
     const float *B = device_B + blockIdx.x * block_tile_n;
     float *C = device_C + blockIdx.y * block_tile_m * NN + blockIdx.x * block_tile_n;
 
-    load_global_to_bufferReg(
+    load_global_to_register(
         bufferReg_global_to_shared_a, A, 
         block_tile_m, block_tile_k, 
         MM, KK, 
         global_start_row_a, global_start_col_a, global_stride_a
     );
-    load_global_to_bufferReg(
+    load_global_to_register(
         bufferReg_global_to_shared_b, B, 
         block_tile_k, block_tile_n, 
         KK, NN, 
         global_start_row_b, global_start_col_b, global_stride_b
     );
 
-    load_bufferReg_to_shared_a(
+    load_register_to_shared_a(
         bufferReg_global_to_shared_a, shared_a[0], 
         block_tile_m, block_tile_k, 
         MM, KK, 
         global_start_row_a, global_start_col_a, global_stride_a
     );
-    load_bufferReg_to_shared_b(
+    load_register_to_shared_b(
         bufferReg_global_to_shared_b, shared_b[0], 
         block_tile_k, block_tile_n, 
         KK, NN, 
@@ -178,8 +178,8 @@ __global__ void sgemm(
 
     __syncthreads();
 
-    load_shared_to_reg(shared_to_reg_a[0], shared_a[0], block_tile_k, block_tile_m, thread_tile_m, 0, thread_y);
-    load_shared_to_reg(shared_to_reg_b[0], shared_b[0], block_tile_k, block_tile_n, thread_tile_n, 0, thread_x);
+    load_shared_to_register(shared_to_reg_a[0], shared_a[0], block_tile_k, block_tile_m, thread_tile_m, 0, thread_y);
+    load_shared_to_register(shared_to_reg_b[0], shared_b[0], block_tile_k, block_tile_n, thread_tile_n, 0, thread_x);
 
     int load_index_shared = 0;
     #pragma unroll
@@ -187,13 +187,13 @@ __global__ void sgemm(
         load_index_shared ^= 1;
         int next_k = k + block_tile_k;
         if (next_k < KK) {
-            load_global_to_bufferReg(
+            load_global_to_register(
                 bufferReg_global_to_shared_a, A, 
                 block_tile_m, block_tile_k, 
                 MM, KK, 
                 global_start_row_a, global_start_col_a + next_k, global_stride_a
             );
-            load_global_to_bufferReg(
+            load_global_to_register(
                 bufferReg_global_to_shared_b, B, 
                 block_tile_k, block_tile_n, 
                 KK, NN, 
@@ -206,12 +206,12 @@ __global__ void sgemm(
         for (int s = 0; s < block_tile_k; ++s) {
             load_index_reg ^= 1;
             if (s + 1 < block_tile_k) {
-                load_shared_to_reg(
+                load_shared_to_register(
                     shared_to_reg_a[load_index_reg], shared_a[load_index_shared ^ 1], 
                     block_tile_k, block_tile_m, thread_tile_m, 
                     s + 1, thread_y
                 );
-                load_shared_to_reg(
+                load_shared_to_register(
                     shared_to_reg_b[load_index_reg], shared_b[load_index_shared ^ 1],
                     block_tile_k, block_tile_n, thread_tile_n, 
                     s + 1, thread_x
@@ -228,13 +228,13 @@ __global__ void sgemm(
         }
         
         if (next_k < KK) {
-            load_bufferReg_to_shared_a(
+            load_register_to_shared_a(
                 bufferReg_global_to_shared_a, shared_a[load_index_shared], 
                 block_tile_m, block_tile_k, 
                 MM, KK, 
                 global_start_row_a, global_start_col_a, global_stride_a
             );
-            load_bufferReg_to_shared_b(
+            load_register_to_shared_b(
                 bufferReg_global_to_shared_b, shared_b[load_index_shared], 
                 block_tile_k, block_tile_n, 
                 KK, NN, 
@@ -243,12 +243,12 @@ __global__ void sgemm(
 
             __syncthreads();
 
-            load_shared_to_reg(
+            load_shared_to_register(
                 shared_to_reg_a[0], shared_a[load_index_shared], 
                 block_tile_k, block_tile_m, thread_tile_m, 
                 0, thread_y
             );
-            load_shared_to_reg(
+            load_shared_to_register(
                 shared_to_reg_b[0], shared_b[load_index_shared], 
                 block_tile_k, block_tile_n, thread_tile_n, 
                 0, thread_x

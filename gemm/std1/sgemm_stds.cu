@@ -13,7 +13,7 @@
         printf ("%s %d CUDA: %s\n", __FILE__,  __LINE__, cudaGetErrorString(e)); \
 }
 
-__device__ __forceinline__ void load_global_to_bufferReg(float * const &buffer, const float * const &A, 
+__device__ __forceinline__ void load_global_to_register(float * const &buffer, const float * const &A, 
     const int &bm, const int &bn, const int &M, const int &N, 
     const int &start_row, const int &start_col, const int &stride) {
     for (int i = 0; i < bm; i += stride) {
@@ -23,7 +23,7 @@ __device__ __forceinline__ void load_global_to_bufferReg(float * const &buffer, 
     }
 }
 
-__device__ __forceinline__ void load_bufferReg_to_shared_a(const float * const &buffer, float * const &shared, 
+__device__ __forceinline__ void load_register_to_shared_a(const float * const &buffer, float * const &shared, 
     const int &bm, const int &bn, const int &M, const int &N, 
     const int &start_row, const int &start_col, const int &stride) {
     for (int i = 0; i < bm; i += stride) {
@@ -36,7 +36,7 @@ __device__ __forceinline__ void load_bufferReg_to_shared_a(const float * const &
     }
 }
 
-__device__ __forceinline__ void load_bufferReg_to_shared_b(const float * const &buffer, float * const &shared, 
+__device__ __forceinline__ void load_register_to_shared_b(const float * const &buffer, float * const &shared, 
     const int &bm, const int &bn, const int &M, const int &N, 
     const int &start_row, const int &start_col, const int &stride) {
     for (int i = 0; i < bm; i += stride) {
@@ -46,7 +46,7 @@ __device__ __forceinline__ void load_bufferReg_to_shared_b(const float * const &
     }
 }
 
-__device__ __forceinline__ void load_shared_to_reg(float * const &reg, const float * const &shared, 
+__device__ __forceinline__ void load_shared_to_register(float * const &reg, const float * const &shared, 
     const int &bm, const int &bn, const int &len, 
     const int &offset_row, const int &offset_col) {
     for (int i = 0; i < len; i += 4) {
@@ -127,32 +127,32 @@ namespace gemm_computational_opt {
         load_bufferReg_to_shared_b(bufferReg_global_to_shared_b, shared_b[0], block_tile_k, block_tile_n, 
             K, N, global_start_row_b, global_start_col_b, global_stride_b);*/
 
-        load_global_to_bufferReg(ldg_a_reg, A, BM, BK, M, K, a_tile_row, a_tile_col, a_tile_stride);
-        load_global_to_bufferReg(ldg_b_reg, B, BK, BN, K, N, b_tile_row, b_tile_col, b_tile_stride);
+        load_global_to_register(ldg_a_reg, A, BM, BK, M, K, a_tile_row, a_tile_col, a_tile_stride);
+        load_global_to_register(ldg_b_reg, B, BK, BN, K, N, b_tile_row, b_tile_col, b_tile_stride);
 
-        load_bufferReg_to_shared_a(ldg_a_reg, As[0], BM, BK, M, K, a_tile_row, a_tile_col, a_tile_stride);
-        load_bufferReg_to_shared_b(ldg_b_reg, Bs[0], BK, BN, K, N, b_tile_row, b_tile_col, b_tile_stride);
+        load_register_to_shared_a(ldg_a_reg, As[0], BM, BK, M, K, a_tile_row, a_tile_col, a_tile_stride);
+        load_register_to_shared_b(ldg_b_reg, Bs[0], BK, BN, K, N, b_tile_row, b_tile_col, b_tile_stride);
 
         __syncthreads();
 
-        load_shared_to_reg(a_frag[0], As[0], BK, BM, TM, 0, ty);
-        load_shared_to_reg(b_frag[0], Bs[0], BK, BN, TN, 0, tx);
+        load_shared_to_register(a_frag[0], As[0], BK, BM, TM, 0, ty);
+        load_shared_to_register(b_frag[0], Bs[0], BK, BN, TN, 0, tx);
 
         int write_index = 0;
         for (int k = 0; k < K; k += BK) {
             write_index ^= 1;
             int next_k = k + BK;
             if (next_k < K) {
-                load_global_to_bufferReg(ldg_a_reg, A, BM, BK, M, K, a_tile_row, a_tile_col + next_k, a_tile_stride);
-                load_global_to_bufferReg(ldg_b_reg, B, BK, BN, K, N, b_tile_row + next_k, b_tile_col, b_tile_stride);
+                load_global_to_register(ldg_a_reg, A, BM, BK, M, K, a_tile_row, a_tile_col + next_k, a_tile_stride);
+                load_global_to_register(ldg_b_reg, B, BK, BN, K, N, b_tile_row + next_k, b_tile_col, b_tile_stride);
             }
 
             int load_index_reg = 0;
             for (int bk = 0; bk < BK; bk++) {
                 load_index_reg ^= 1;
                 if (bk + 1 < BK) {
-                    load_shared_to_reg(a_frag[load_index_reg], As[write_index ^ 1], BK, BM, TM, bk + 1, ty);
-                    load_shared_to_reg(b_frag[load_index_reg], Bs[write_index ^ 1], BK, BN, TN, bk + 1, tx);
+                    load_shared_to_register(a_frag[load_index_reg], As[write_index ^ 1], BK, BM, TM, bk + 1, ty);
+                    load_shared_to_register(b_frag[load_index_reg], Bs[write_index ^ 1], BK, BN, TN, bk + 1, tx);
                 }
                 for (int m = 0; m < TM; m++) {
                     for (int n = 0; n < TN; n++) {
@@ -167,14 +167,14 @@ namespace gemm_computational_opt {
                 load_bufferReg_to_shared_b(bufferReg_global_to_shared_b, shared_b[load_index_shared], 
                     block_tile_k, block_tile_n, K, N, global_start_row_b, global_start_col_b, global_stride_b);*/
 
-                load_bufferReg_to_shared_a(ldg_a_reg, As[write_index], BM, BK, M, K, a_tile_row, a_tile_col, a_tile_stride);
-                load_bufferReg_to_shared_b(ldg_b_reg, Bs[write_index], BK, BN, K, N, b_tile_row, b_tile_col, b_tile_stride);
+                load_register_to_shared_a(ldg_a_reg, As[write_index], BM, BK, M, K, a_tile_row, a_tile_col, a_tile_stride);
+                load_register_to_shared_b(ldg_b_reg, Bs[write_index], BK, BN, K, N, b_tile_row, b_tile_col, b_tile_stride);
 
                 __syncthreads();
 
-                load_shared_to_reg(shared_to_reg_a[0], shared_a[load_index_shared], 
+                load_shared_to_register(shared_to_reg_a[0], shared_a[load_index_shared], 
                     block_tile_k, block_tile_m, thread_tile_m, 0, thread_y);
-                load_shared_to_reg(shared_to_reg_b[0], shared_b[load_index_shared], 
+                load_shared_to_register(shared_to_reg_b[0], shared_b[load_index_shared], 
                     block_tile_k, block_tile_n, thread_tile_n, 0, thread_x);
             }
         }

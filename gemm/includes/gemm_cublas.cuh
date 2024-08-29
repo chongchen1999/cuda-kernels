@@ -6,7 +6,7 @@
 #include <cublas_v2.h>
 
 namespace gemm_cublas {
-    float sgemm_cublas(
+    void sgemm_cublas(
         float *host_A, float *host_B, float *hots_C, 
         int MM, int KK, int NN,
         const int iterations = 1000
@@ -15,6 +15,8 @@ namespace gemm_cublas {
         cudaMalloc(reinterpret_cast<void **>(&device_A), MM * KK * sizeof(float));
         cudaMalloc(reinterpret_cast<void **>(&device_B), NN * KK * sizeof(float));
         cudaMalloc(reinterpret_cast<void **>(&device_cublas), MM * NN * sizeof(float));
+        cudaMemcpy(device_A, host_A, MM * KK * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(device_B, host_B, NN * KK * sizeof(float), cudaMemcpyHostToDevice);
 
         float alpha = 1.0;
         float beta = 0.0;
@@ -46,6 +48,12 @@ namespace gemm_cublas {
         printf("cublas performance: %f GFLOPS\n", gflops);
 
         cudaMemcpy(hots_C, device_cublas, MM * NN * sizeof(float), cudaMemcpyDeviceToHost);
-        return millionseconds;
+
+        cudaFree(device_A);
+        cudaFree(device_B);
+        cudaFree(device_cublas);
+        cublasDestroy(handle);
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
     }
 }
