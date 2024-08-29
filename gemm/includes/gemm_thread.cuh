@@ -15,14 +15,14 @@ namespace gemm_thread {
         float *const &buffer, 
         const float *const &A, 
         const int &bm, const int &bn, 
-        const int &M, const int &NN, 
+        const int &M, const int &N, 
         const int &start_row, const int &start_col, const int &stride
     ) {
         #pragma unroll
         for (int i = 0; i < bm; i += stride) {
             const int offset = i / stride;
             *(reinterpret_cast<float4 *>(buffer) + offset) = 
-                *(reinterpret_cast<const float4 *>(A + (start_row + i) * NN + start_col));
+                *(reinterpret_cast<const float4 *>(A + (start_row + i) * N + start_col));
         }
     }
 
@@ -30,7 +30,7 @@ namespace gemm_thread {
         const float *const &buffer, 
         float *const &shared, 
         const int &bm, const int &bn, 
-        const int &M, const int &NN, 
+        const int &M, const int &N, 
         const int &start_row, const int &start_col, const int &stride
     ) {
         #pragma unroll
@@ -48,7 +48,7 @@ namespace gemm_thread {
         const float *const &buffer, 
         float * const &shared, 
         const int &bm, const int &bn, 
-        const int &MM, const int &NN, 
+        const int &M, const int &N, 
         const int &start_row, const int &start_col, const int &stride
     ) {
         #pragma unroll
@@ -78,7 +78,7 @@ namespace gemm_thread {
     >
     __global__ void sgemm(
         float *device_A, float *device_B, float *device_C, 
-        int MM, int KK, int NN, 
+        int M, int K, int N, 
         float alpha, float beta
     ) {
         const int tid = threadIdx.x;
@@ -108,33 +108,33 @@ namespace gemm_thread {
         float shared_to_reg_a[2][thread_tile_m];
         float shared_to_reg_b[2][thread_tile_n];
 
-        const float *A = device_A + blockIdx.y * block_tile_m * KK;
+        const float *A = device_A + blockIdx.y * block_tile_m * K;
         const float *B = device_B + blockIdx.x * block_tile_n;
-        float *C = device_C + blockIdx.y * block_tile_m * NN + blockIdx.x * block_tile_n;
+        float *C = device_C + blockIdx.y * block_tile_m * N + blockIdx.x * block_tile_n;
 
         load_global_to_register(
             bufferReg_global_to_shared_a, A, 
             block_tile_m, block_tile_k, 
-            MM, KK, 
+            M, K, 
             global_start_row_a, global_start_col_a, global_stride_a
         );
         load_global_to_register(
             bufferReg_global_to_shared_b, B, 
             block_tile_k, block_tile_n, 
-            KK, NN, 
+            K, N, 
             global_start_row_b, global_start_col_b, global_stride_b
         );
 
         load_register_to_shared_a(
             bufferReg_global_to_shared_a, shared_a[0], 
             block_tile_m, block_tile_k, 
-            MM, KK, 
+            M, K, 
             global_start_row_a, global_start_col_a, global_stride_a
         );
         load_register_to_shared_b(
             bufferReg_global_to_shared_b, shared_b[0], 
             block_tile_k, block_tile_n, 
-            KK, NN, 
+            K, N, 
             global_start_row_b, global_start_col_b, global_stride_b
         );
 
@@ -145,20 +145,20 @@ namespace gemm_thread {
 
         int load_index_shared = 0;
         #pragma unroll
-        for (int k = 0; k < KK; k += block_tile_k) {
+        for (int k = 0; k < K; k += block_tile_k) {
             load_index_shared ^= 1;
             int next_k = k + block_tile_k;
-            if (next_k < KK) {
+            if (next_k < K) {
                 load_global_to_register(
                     bufferReg_global_to_shared_a, A, 
                     block_tile_m, block_tile_k, 
-                    MM, KK, 
+                    M, K, 
                     global_start_row_a, global_start_col_a + next_k, global_stride_a
                 );
                 load_global_to_register(
                     bufferReg_global_to_shared_b, B, 
                     block_tile_k, block_tile_n, 
-                    KK, NN, 
+                    K, N, 
                     global_start_row_b + next_k, global_start_col_b, global_stride_b
                 );
             }
@@ -189,17 +189,17 @@ namespace gemm_thread {
                 }
             }
             
-            if (next_k < KK) {
+            if (next_k < K) {
                 load_register_to_shared_a(
                     bufferReg_global_to_shared_a, shared_a[load_index_shared], 
                     block_tile_m, block_tile_k, 
-                    MM, KK, 
+                    M, K, 
                     global_start_row_a, global_start_col_a, global_stride_a
                 );
                 load_register_to_shared_b(
                     bufferReg_global_to_shared_b, shared_b[load_index_shared], 
                     block_tile_k, block_tile_n, 
-                    KK, NN, 
+                    K, N, 
                     global_start_row_b, global_start_col_b, global_stride_b
                 );
 
@@ -223,7 +223,7 @@ namespace gemm_thread {
             #pragma unroll
             for (int j = 0; j < thread_tile_n; j += 4) {
                 float4 &accum_ref = *reinterpret_cast<float4 *>(&accum[i][j]);
-                float4 &C_ref = *reinterpret_cast<float4 *>(C + (thread_y + i) * NN + (thread_x + j));
+                float4 &C_ref = *reinterpret_cast<float4 *>(C + (thread_y + i) * N + (thread_x + j));
                 accum_ref.x = alpha * accum_ref.x + beta * C_ref.x;
                 accum_ref.y = alpha * accum_ref.y + beta * C_ref.y;
                 accum_ref.z = alpha * accum_ref.z + beta * C_ref.z;
@@ -235,15 +235,15 @@ namespace gemm_thread {
 
     void sgemm_kernel(
         float *host_A, float *host_B, float *host_C, 
-        int MM, int KK, int NN,
+        int M, int K, int N,
         const int iterations = 1000
     ) {
         float *device_A, *device_B, *device_C;
-        cudaMalloc(reinterpret_cast<void **>(&device_A), MM * KK * sizeof(float));
-        cudaMalloc(reinterpret_cast<void **>(&device_B), KK * NN * sizeof(float));
-        cudaMalloc(reinterpret_cast<void **>(&device_C), MM * NN * sizeof(float));
-        cudaMemcpy(device_A, host_A, MM * KK * sizeof(float), cudaMemcpyHostToDevice);
-        cudaMemcpy(device_B, host_B, KK * NN * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMalloc(reinterpret_cast<void **>(&device_A), M * K * sizeof(float));
+        cudaMalloc(reinterpret_cast<void **>(&device_B), K * N * sizeof(float));
+        cudaMalloc(reinterpret_cast<void **>(&device_C), M * N * sizeof(float));
+        cudaMemcpy(device_A, host_A, M * K * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(device_B, host_B, K * N * sizeof(float), cudaMemcpyHostToDevice);
 
         float alpha = 1.0;
         float beta = 0.0;
@@ -256,7 +256,7 @@ namespace gemm_thread {
         constexpr int number_of_threads = 256;
 
         dim3 threads_per_block(number_of_threads);
-        dim3 blocks_per_grid((MM - 1) / block_tile_m + 1, (NN - 1) / block_tile_n + 1);
+        dim3 blocks_per_grid((M - 1) / block_tile_m + 1, (N - 1) / block_tile_n + 1);
 
         cudaEvent_t start, stop;
         cudaEventCreate(&start);
@@ -264,19 +264,19 @@ namespace gemm_thread {
         cudaEventRecord(start, 0);
         for (int i = 0; i < iterations; ++i) {
             sgemm<block_tile_m, block_tile_n, block_tile_k, thread_tile_m, thread_tile_n>
-                <<<blocks_per_grid, threads_per_block>>>(device_A, device_B, device_C, MM, KK, NN, alpha, beta);
+                <<<blocks_per_grid, threads_per_block>>>(device_A, device_B, device_C, M, K, N, alpha, beta);
         }
         cudaEventRecord(stop, 0);
         cudaEventSynchronize(stop);
         float millionseconds = 0.0;
         cudaEventElapsedTime(&millionseconds, start, stop);
         millionseconds /= iterations;
-        float gflops = (2.0 * MM * NN * KK) / (1 << 30) / (millionseconds / 1000.0);
+        float gflops = (2.0 * M * N * K) / (1 << 30) / (millionseconds / 1000.0);
         printf("sgemm kernel used time: %f ms\n", millionseconds);
         printf("sgemm kernel performance: %f GFLOPS\n", gflops);
 
-        cudaMemcpy(host_C, device_C, MM * NN * sizeof(float), cudaMemcpyDeviceToHost);
-        
+        cudaMemcpy(host_C, device_C, M * N * sizeof(float), cudaMemcpyDeviceToHost);
+
         cudaFree(device_A);
         cudaFree(device_B);
         cudaFree(device_C);

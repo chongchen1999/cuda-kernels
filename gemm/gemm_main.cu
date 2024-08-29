@@ -3,24 +3,20 @@
 #include <cmath>
 #include <numeric>
 
-void init_matrix(float *A, int M, int N, float value = 0.1f) {
-    // Step 1: Initialize the matrix with random values
+void init_matrix(float *A, int M, int N, float value = 1.0f) {
     for (int i = 0; i < M * N; ++i) {
         A[i] = value * (float)rand() / RAND_MAX;
     }
 
-    // Step 2: Calculate the mean of the matrix
     float sum = std::accumulate(A, A + M * N, 0.0f);
     float mean = sum / (M * N);
 
-    // Step 3: Calculate the standard deviation
     float sq_sum = 0.0f;
     for (int i = 0; i < M * N; ++i) {
         sq_sum += (A[i] - mean) * (A[i] - mean);
     }
     float stddev = std::sqrt(sq_sum / (M * N));
 
-    // Step 4: Standardize the matrix
     for (int i = 0; i < M * N; ++i) {
         A[i] = (A[i] - mean) / stddev;
     }
@@ -54,8 +50,8 @@ int main(int argc, char *argv[]) {
     host_A = (float *)malloc(M * K * sizeof(float));
     host_B = (float *)malloc(K * N * sizeof(float));
 
-    init_matrix(host_A, M, K, 0.05);
-    init_matrix(host_B, K, N, 0.05);
+    init_matrix(host_A, M, K, 0.1);
+    init_matrix(host_B, K, N, 0.1);
 
     float *host_C = (float *)malloc(M * N * sizeof(float));
     gemm_thread::sgemm_kernel(host_A, host_B, host_C, M, K, N);
