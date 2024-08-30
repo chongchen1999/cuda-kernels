@@ -1,62 +1,61 @@
-#include <cutlass/cutlass.h>
-#include <cutlass/gemm/gemm.h>
-#include <cutlass/gemm/device/gemm.h>
-#include <vector>
 #include <iostream>
+#include <cutlass/gemm/device/gemm.h>
+#include <cutlass/util/host_tensor.h>
+
+// Define the GEMM traits
+using ColumnMajor = cutlass::layout::ColumnMajor;
+using CutlassGemm = cutlass::gemm::device::Gemm<float, ColumnMajor, float, ColumnMajor, float, ColumnMajor>;
 
 int main() {
-    using ElementAccumulator = float;
-    using ElementComputeEpilogue = float;
-    using ElementInputA = float;
-    using ElementInputB = float;
-    using ElementOutput = float;
+    const int M = 128;
+    const int N = 128;
+    const int K = 128;
 
-    using LayoutInputA = cutlass::layout::RowMajor;
-    using LayoutInputB = cutlass::layout::RowMajor;
-    using LayoutOutput = cutlass::layout::RowMajor;
+    // Allocate matrices
+    cutlass::HostTensor<float, ColumnMajor> A({M, K});
+    cutlass::HostTensor<float, ColumnMajor> B({K, N});
+    cutlass::HostTensor<float, ColumnMajor> C({M, N});
 
-    using Gemm = cutlass::gemm::device::Gemm<
-        ElementInputA,
-        LayoutInputA,
-        ElementInputB,
-        LayoutInputB,
-        ElementOutput,
-        LayoutOutput,
-        ElementAccumulator
-    >;
+    // Initialize matrices (you can modify this part to set your own values)
+    for (int i = 0; i < A.size(); ++i) A.host_data()[i] = 1.0f;
+    for (int i = 0; i < B.size(); ++i) B.host_data()[i] = 2.0f;
+    for (int i = 0; i < C.size(); ++i) C.host_data()[i] = 0.0f;
 
-    int M = 128;  // Number of rows in A and C
-    int N = 128;  // Number of columns in B and C
-    int K = 128;  // Number of columns in A and rows in B
+    // Copy data to device
+    A.sync_device();
+    B.sync_device();
+    C.sync_device();
 
-    std::vector<float> matrixA(M * K, 1.0f);
-    std::vector<float> matrixB(K * N, 1.0f);
-    std::vector<float> matrixC(M * N, 0.0f);
+    // Initialize GEMM arguments
+    CutlassGemm::Arguments args({M, N, K},  // Dimensions
+                                {A.device_data(), A.stride(0)},  // A matrix
+                                {B.device_data(), B.stride(0)},  // B matrix
+                                {C.device_data(), C.stride(0)},  // C matrix
+                                {C.device_data(), C.stride(0)},  // D matrix (output)
+                                {1.0f, 0.0f});  // alpha and beta
 
-    cutlass::TensorRef<ElementInputA, LayoutInputA> tensorA(matrixA.data(), M);
-    cutlass::TensorRef<ElementInputB, LayoutInputB> tensorB(matrixB.data(), N);
-    cutlass::TensorRef<ElementOutput, LayoutOutput> tensorC(matrixC.data(), N);
-
-    typename Gemm::Arguments args(
-        {M, N, K},
-        {tensorA.data(), M},
-        {tensorB.data(), K},
-        {tensorC.data(), N},
-        {tensorC.data(), N},
-        {1.0f, 0.0f}
-    );
-
-    Gemm gemm_op;
+    // Initialize GEMM
+    CutlassGemm gemm_op;
+    
+    // Run GEMM
     cutlass::Status status = gemm_op(args);
 
+    // Check for errors
     if (status != cutlass::Status::kSuccess) {
-        std::cerr << "GEMM operation failed." << std::endl;
-        return -1;
+        std::cerr << "GEMM failed with status " << static_cast<int>(status) << std::endl;
+        return 1;
     }
 
-    // Check results or use matrixC as needed
-    for (int i = 0; i < M * N; ++i) {
-        std::cout << matrixC[i] << " ";
+    // Copy result back to host
+    C.sync_host();
+
+    // Print a small part of the result (modify as needed)
+    std::cout << "Result (top-left 4x4 corner of C):" << std::endl;
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            std::cout << C.at({i, j}) << " ";
+        }
+        std::cout << std::endl;
     }
 
     return 0;
