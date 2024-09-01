@@ -1,0 +1,3 @@
+nvcc -arch=sm_86 -I/home/tourist/cutlass/include -I/home/tourist/cutlass/tools/util/include -L/home/tourist/cutlass/build/tools/library -lcutlass -lcublas gemm_main.cu -o gemm_main
+
+nvcc -arch=sm_86 -I/home/tourist/cutlass/include -lcudart -o gemm_main gemm_main.cu

@@ -1,5 +1,6 @@
 #include "includes/gemm_thread.cuh"
 #include "includes/gemm_cublas.cuh"
+#include "includes/gemm_cutlass.cuh"
 #include <cmath>
 #include <numeric>
 
@@ -24,7 +25,7 @@ void init_matrix(float *A, int M, int N, float value = 1.0f) {
 
 bool check_reult(float *A, float *B, int size) {
     for (int i = 0; i < size; ++i) {
-        const float eps = 1e-2;
+        const float eps = 0.01f;
         const float diff = fabs(A[i] - B[i]);
         const float val = fmax(fabs(A[i]), fabs(B[i])) + eps;
         if (diff > eps * val && diff > eps) {
@@ -57,17 +58,33 @@ int main(int argc, char *argv[]) {
     gemm_thread::sgemm_kernel(host_A, host_B, host_C, M, K, N);
 
     float *host_C_cublas = (float *)malloc(M * N * sizeof(float));
-    gemm_cublas::sgemm_cublas(host_A, host_B, host_C_cublas, M, K, N);
+    gemm_cublas::sgemm_cublas_tensorcore(host_A, host_B, host_C_cublas, M, K, N);
+
+    float *host_C_cutlass = (float *)malloc(M * N * sizeof(float));
+    gemm_cutlass::sgemm_cutlass(host_A, host_B, host_C_cutlass, M, K, N);
 
     if (check_reult(host_C, host_C_cublas, M * N)) {
-        printf("result is right\n");
+        printf("manual and cublas result match!\n");
     } else {
-        printf("result is wrong\n");
+        printf("manual and cublas result not match!\n");
+    }
+
+    if (check_reult(host_C_cutlass, host_C_cublas, M * N)) {
+        printf("cutlass and cublas result match!\n");
+    } else {
+        printf("cutlass and cublas result not match!\n");
+    }
+
+    if (check_reult(host_C_cutlass, host_C, M * N)) {
+        printf("cutlass and manual result match!\n");
+    } else {
+        printf("cutlass and manual result not match!\n");
     }
 
     free(host_A);
     free(host_B);
     free(host_C);
     free(host_C_cublas);
+    free(host_C_cutlass);
     return 0;
 }

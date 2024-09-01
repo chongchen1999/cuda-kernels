@@ -87,6 +87,7 @@
         "valarray": "cpp",
         "variant": "cpp",
         "__locale": "cpp",
-        "__string": "cpp"
+        "__string": "cpp",
+        "__nullptr": "cpp"
     }
 }
