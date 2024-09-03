@@ -11,15 +11,17 @@ namespace gemm_cutlass {
         int iterations = 1000
     ) {
         // Define the GEMM operation
-        using Gemm = cutlass::gemm::device::Gemm<float,        // ElementA
-                                                 cutlass::layout::RowMajor, // LayoutA
-                                                 float,        // ElementB
-                                                 cutlass::layout::RowMajor, // LayoutB
-                                                 float,        // ElementC
-                                                 cutlass::layout::RowMajor,  // LayoutC
-                                                 float,        // ElementAccumulator
-                                                 cutlass::arch::OpClassSimt,  // OperatorClass
-                                                 cutlass::arch::Sm50>;  // ArchTag
+        using Gemm = cutlass::gemm::device::Gemm<
+            float,        // ElementA
+            cutlass::layout::RowMajor, // LayoutA
+            float,        // ElementB
+            cutlass::layout::RowMajor, // LayoutB
+            float,        // ElementC
+            cutlass::layout::RowMajor,  // LayoutC
+            float,        // ElementAccumulator
+            cutlass::arch::OpClassSimt,  // OperatorClass
+            cutlass::arch::Sm86 // ArchTag
+        >;
 
         // Create a GEMM instance
         Gemm gemm_op;
@@ -93,6 +95,6 @@ namespace gemm_cutlass {
         cudaEventDestroy(stop);
 
         // Print the elapsed time
-        printf("kernel time: %.4f ms\n", ker_time / iterations);
+        printf("cutlass kernel time: %.4f ms\n", ker_time / iterations);
     }
 }
