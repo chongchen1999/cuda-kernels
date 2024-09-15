@@ -6,7 +6,7 @@
 #include <chrono>
 #include <string>
 #include <cassert>
-#include "commons.cuh"
+#include "includes/commons.cuh"
 
 int STAGES = 1;
 int MULTI_THREADING = 1;
@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
         matmul<<<dimGrid, dimBlock, smem_size, nullptr>>>(dA, dB, dC, M, N, K, alpha, beta);
     }
     cudaDeviceSynchronize();
-    // auto start = std::chrono::high_resolution_clock::now();
+
     cudaEventRecord(start);
     for (int i = 0; i < iterations; ++i) {
         matmul<<<dimGrid, dimBlock, smem_size, nullptr>>>(dA, dB, dC, M, N, K, alpha, beta);

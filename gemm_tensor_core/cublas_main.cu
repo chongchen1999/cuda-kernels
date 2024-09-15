@@ -7,7 +7,7 @@
 #include <string>
 #include <cassert>
 #include <cublas_v2.h>
-#include "commons.cuh"
+#include "includes/commons.cuh"
 
 inline const char *cublas_get_error(cublasStatus_t status) {
     switch (status) {

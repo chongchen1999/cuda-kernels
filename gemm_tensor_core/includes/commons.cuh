@@ -11,11 +11,12 @@
     }                                                                     \
 }
 
-int M = 5376;
-int N = 5376;
-int K = 2048;
+inline int M = 5376;
+inline int N = 5376;
+inline int K = 2048;
+inline constexpr int warpSize = 32;
 
-int iterations = 200;
+inline int iterations = 200;
 
 #define MAX(a, b) (a) > (b) ? (a) : (b)
 
