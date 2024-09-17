@@ -231,7 +231,11 @@ __device__ __forceinline__ void loadSmemAndCommit(
     asm volatile("cp.async.commit_group;\n" ::);
 }
 
-__global__ void matmul(half *A, half *B, half *C, int M, int N, int K, float alpha, float beta) {
+__global__ void matmul(
+    half *A, half *B, half *C, 
+    int M, int N, int K, 
+    float alpha, float beta
+) {
     // A is row-major
     // B is col-major
     // 128 threads [x, y, z] = [32, 2, 2]
