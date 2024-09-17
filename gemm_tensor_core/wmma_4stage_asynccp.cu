@@ -23,19 +23,19 @@ __device__ __forceinline__ void loadSmemA(half *smem, half *A, int M, int K, int
     const int lane_id = threadIdx.x;
     const int warp_x = threadIdx.y;
     const int warp_y = threadIdx.z;
-    const int tid = warp_y * 64 + warp_x * 32 + lane_id;
+    const int tid = (warp_y << 6) + (warp_x << 5) + lane_id;
 
     #pragma unroll
     for (int i = 0; i < 4; ++i) {
-        const int row = i * 32 + tid / 4; // 1 thread load 128-bit, 4 threads per row
-        const int col = lane_id % 4 * 8; // 128-bit per thread, aka 8 half per thread
+        const int row = (i << 5) + (tid >> 2); // 1 thread load 128-bit, 4 threads per row
+        const int col = (lane_id >> 2) << 3; // 128-bit per thread, aka 8 half per thread
 
         // layout: [row_out, col_out, row_in, col_in] = [8, 2, 16, 16]
-        const int row_o = row / 16;
-        const int col_o = col / 16;
-        const int row_i = row % 16;
-        const int col_i = col % 16;
-        void *ptr = reinterpret_cast<void *>(smem + row_o * (2 * 16 * 16) + col_o * (16 * 16) + row_i * 16 + col_i);
+        const int row_o = row >> 4;
+        const int col_o = col >> 4;
+        const int row_i = row & 15;
+        const int col_i = col & 15;
+        void *ptr = reinterpret_cast<void *>(smem + (row_o << 9) + (col_o << 8) + (row_i << 4) + col_i);
         uint32_t smem_ptr;
 
         asm(
@@ -58,19 +58,20 @@ __device__ __forceinline__ void loadSmemB(half *smem, half *B, int N, int K, int
     const int lane_id = threadIdx.x;
     const int warp_x = threadIdx.y;
     const int warp_y = threadIdx.z;
-    const int tid = warp_y * 64 + warp_x * 32 + lane_id;
+    // const int tid = warp_y * 64 + warp_x * 32 + lane_id;
+    const int tid = (warp_y << 6) + (warp_x << 5) + lane_id;
 
     #pragma unroll
     for (int i = 0; i < 4; ++i) {
-        const int row = i * 32 + tid / 4;
-        const int col = tid % 4 * 8;
+        const int row = (i << 5) + (tid >> 2); // 1 thread load 128-bit, 4 threads per row
+        const int col = (lane_id >> 2) << 3; // 128-bit per thread, aka 8 half per thread
 
         // layout: [row_out, col_out, row_in, col_in] = [8, 2, 16, 16]
-        const int row_o = row / 16;
-        const int col_o = col / 16;
-        const int row_i = row % 16;
-        const int col_i = col % 16;
-        void *ptr = reinterpret_cast<void *>(smem + row_o * (2 * 16 * 16) + col_o * (16 * 16) + row_i * 16 + col_i);
+        const int row_o = row >> 4;
+        const int col_o = col >> 4;
+        const int row_i = row & 15;
+        const int col_i = col & 15;
+        void *ptr = reinterpret_cast<void *>(smem + (row_o << 9) + (col_o << 8) + (row_i << 4) + col_i);
         uint32_t smem_ptr;
 
         asm(
@@ -94,7 +95,7 @@ __device__ __forceinline__ void loadSmemC(float *smem, half *C, int M, int N) {
     const int lane_id = threadIdx.x;
     const int warp_x = threadIdx.y;
     const int warp_y = threadIdx.z;
-    const int tid = warp_y * 64 + warp_x * 32 + lane_id;
+    const int tid = (warp_y << 6) + (warp_x << 5) + lane_id;
 
     #pragma unroll
     for (int i = 0; i < block_tile_m; ++i) {
@@ -102,11 +103,11 @@ __device__ __forceinline__ void loadSmemC(float *smem, half *C, int M, int N) {
         const int col = tid;
 
         // layout: [row_out, col_out, row_in, col_in] = [8, 8, 16, 16]
-        const int row_o = row / 16;
-        const int col_o = col / 16;
-        const int row_i = row % 16;
-        const int col_i = col % 16;
-        smem[row_o * (8 * 16 * 16) + col_o * (16 * 16) + row_i * 16 + col_i % 16] = 
+        const int row_o = row >> 4;
+        const int col_o = col >> 4;
+        const int row_i = row & 15;
+        const int col_i = col & 15;
+        smem[(row_o << 9) + (col_o << 8) + (row_i << 4) + col_i] = 
             static_cast<float>(C[(by * block_tile_m + row) * N + bx * block_tile_n + col]);
     }
 }
@@ -118,7 +119,7 @@ __device__ __forceinline__ void storeSmemC(half *C, float *smem, int M, int N) {
     const int lane_id = threadIdx.x;
     const int warp_x = threadIdx.y;
     const int warp_y = threadIdx.z;
-    const int tid = warp_y * 64 + warp_x * 32 + lane_id;
+    const int tid = (warp_y << 6) + (warp_x << 5) + lane_id;
 
     #pragma unroll
     for (int i = 0; i < block_tile_m; ++i) {
@@ -126,12 +127,12 @@ __device__ __forceinline__ void storeSmemC(half *C, float *smem, int M, int N) {
         const int col = tid;
 
         // layout: [row_out, col_out, row_in, col_in] = [8, 8, 16, 16]
-        const int row_o = row / 16;
-        const int col_o = col / 16;
-        const int row_i = row % 16;
-        const int col_i = col % 16;
+        const int row_o = row >> 4;
+        const int col_o = col >> 4;
+        const int row_i = row & 15;
+        const int col_i = col & 15;
         C[(by * block_tile_m + row) * N + bx * block_tile_m + col] = 
-            static_cast<half>(smem[row_o * (8 * 16 * 16) + col_o * (16 * 16) + row_i * 16 + col_i % 16]);
+            static_cast<half>(smem[(row_o << 9) + (col_o << 8) + (row_i << 4) + col_i]);
     }
 }
 
@@ -144,9 +145,13 @@ __device__ __forceinline__ void loadFragA(
     const int warp_y = threadIdx.z;
     #pragma unroll
     for (int i = 0; i < 4; ++i) {
-        const int row = warp_y * 64 + i * 16;
+        const int row = (warp_y << 6) + (i << 4);
         const int col = k * wk;
-        nvcuda::wmma::load_matrix_sync(frag[i], smem + row / 16 * (2 * 16 * 16) + col / 16 * (16 * 16), 16);
+        nvcuda::wmma::load_matrix_sync(
+            frag[i], 
+            smem + ((row >> 4) << 9) + ((col >> 4) << 8), 
+            16
+        );
     }
 }
 
@@ -158,9 +163,13 @@ __device__ __forceinline__ void loadFragB(
     // load 64x16
     int warp_x = threadIdx.y;
     for (int i = 0; i < 4; ++i) {
-        int row = warp_x * 64 + i * 16;
-        int col = ki * wk;
-        nvcuda::wmma::load_matrix_sync(frag[i], smem + row / 16 * (2 * 16 * 16) + col / 16 * (16 * 16), 16);
+        const int row = (warp_x << 6) + (i << 4);
+        const int col = ki * wk;
+        nvcuda::wmma::load_matrix_sync(
+            frag[i], 
+            smem + ((row >> 4) << 9) + ((col >> 4) << 8), 
+            16
+        );
     }
 }
 
@@ -169,16 +178,20 @@ __device__ __forceinline__ void storeAccum(
     nvcuda::wmma::fragment<nvcuda::wmma::accumulator, wmma_m, wmma_n, wmma_k, float> *frag
 ) {
     // store 64x64
-    int warp_x = threadIdx.y;
-    int warp_y = threadIdx.z;
+    const int warp_x = threadIdx.y;
+    const int warp_y = threadIdx.z;
+
+    #pragma unroll
     for (int i = 0; i < 4; ++i) {
+        #pragma unroll
         for (int j = 0; j < 4; ++j) {
-            int row = warp_y * 64 + i * 16;
-            int col = warp_x * 64 + j * 16;
+            const int row = (warp_y << 6) + (i << 4);
+            const int col = (warp_x << 6) + (j << 4);
+
             // laoyut: [8, 8, 16, 16]
             nvcuda::wmma::store_matrix_sync(
-                ptr + row / 16 * (8 * 16 * 16) + col / 16 * (16 * 16), 
-                frag[i * 4 + j], 16, 
+                ptr + ((row >> 4) << 9) + ((col >> 4) << 8), 
+                frag[(i << 2) + j], 16, 
                 nvcuda::wmma::mem_row_major
             );
         }
