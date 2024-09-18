@@ -14,6 +14,11 @@
 inline int M = 5376;
 inline int N = 5376;
 inline int K = 2048;
+
+// inline int M = 512;
+// inline int N = 512;
+// inline int K = 512;
+
 inline constexpr int warpSize = 32;
 
 inline int iterations = 200;
@@ -23,3 +28,7 @@ inline int iterations = 200;
 const int block_tile_m = 128;
 const int block_tile_n = 128;
 const int block_tile_k = 32;
+
+inline float randFP32(float min = .0f, float max = 1.0f) {
+    return min + (max - min) * rand() / RAND_MAX;
+}
