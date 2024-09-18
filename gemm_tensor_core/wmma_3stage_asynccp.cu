@@ -3,7 +3,6 @@
 #include <cuda_fp16.h>
 #include <mma.h>
 #include <cuda.h>
-#include "includes/commons.cuh"
 
 const int bm = 128;
 const int bn = 128;
@@ -47,7 +46,7 @@ __device__ __forceinline__ void loadSmemA(half *smem, half *A, int M, int K, int
         asm volatile(
             "cp.async.cg.shared.global [%0], [%1], %2;\n"
             :
-            : "r"(smem_ptr), "l"(&A[(by * block_tile_m + row) * K + (k * bk + col)]), "n"(16)
+            : "r"(smem_ptr), "l"(&A[(by * bm + row) * K + (k * bk + col)]), "n"(16)
         );
     }
 }
@@ -83,7 +82,7 @@ __device__ __forceinline__ void loadSmemB(half *smem, half *B, int N, int K, int
         asm volatile(
             "cp.async.cg.shared.global [%0], [%1], %2;\n" 
             :
-            : "r"(smem_ptr), "l"(&B[(bx * block_tile_n + row) * K + (k * bk + col)]), "n"(16)
+            : "r"(smem_ptr), "l"(&B[(bx * bn + row) * K + (k * bk + col)]), "n"(16)
         );
     }
 }
@@ -98,7 +97,7 @@ __device__ __forceinline__ void loadSmemC(float *smem, half *C, int M, int N) {
     const int tid = (warp_y << 6) + (warp_x << 5) + lane_id;
 
     #pragma unroll
-    for (int i = 0; i < block_tile_m; ++i) {
+    for (int i = 0; i < bm; ++i) {
         const int row = i;
         const int col = tid;
 
@@ -108,7 +107,7 @@ __device__ __forceinline__ void loadSmemC(float *smem, half *C, int M, int N) {
         const int row_i = row & 15;
         const int col_i = col & 15;
         smem[(row_o << 9) + (col_o << 8) + (row_i << 4) + col_i] = 
-            static_cast<float>(C[(by * block_tile_m + row) * N + bx * block_tile_n + col]);
+            static_cast<float>(C[(by * bm + row) * N + bx * bn + col]);
     }
 }
 
@@ -122,7 +121,7 @@ __device__ __forceinline__ void storeSmemC(half *C, float *smem, int M, int N) {
     const int tid = (warp_y << 6) + (warp_x << 5) + lane_id;
 
     #pragma unroll
-    for (int i = 0; i < block_tile_m; ++i) {
+    for (int i = 0; i < bm; ++i) {
         const int row = i;
         const int col = tid;
 
@@ -131,7 +130,7 @@ __device__ __forceinline__ void storeSmemC(half *C, float *smem, int M, int N) {
         const int col_o = col >> 4;
         const int row_i = row & 15;
         const int col_i = col & 15;
-        C[(by * block_tile_m + row) * N + bx * block_tile_m + col] = 
+        C[(by * bm + row) * N + bx * bm + col] = 
             static_cast<half>(smem[(row_o << 9) + (col_o << 8) + (row_i << 4) + col_i]);
     }
 }
@@ -258,11 +257,10 @@ __global__ void matmul(
     half *SA1 = reinterpret_cast<half *>(shared_storage);
     half *SA2 = SA1 + bm * bk;
     half *SA3 = SA2 + bm * bk;
-    half *SA4 = SA3 + bm * bk;
-    half *SB1 = SA4 + bm * bk;
+
+    half *SB1 = SA3 + bm * bk;
     half *SB2 = SB1 + bn * bk;
     half *SB3 = SB2 + bn * bk;
-    half *SB4 = SB3 + bn * bk;
     float *SC = reinterpret_cast<float *>(shared_storage);
 
     const int frags_m = wm / wmma_m;
@@ -278,54 +276,43 @@ __global__ void matmul(
     // prologue
     loadSmemAndCommit(SA1, SB1, A, B, 0, M, N, K);
     loadSmemAndCommit(SA2, SB2, A, B, 1, M, N, K);
-    loadSmemAndCommit(SA3, SB3, A, B, 2, M, N, K);
 
     const int outter_iters_k = K / bk;
     const int inner_iters_k = bk / wk;
 
     #pragma unroll
-    for (int ko = 0; ko + 4 < outter_iters_k; ko += 4) {
+    for (int ko = 0; ko + 3 < outter_iters_k; ko += 3) {
         asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
         __syncthreads();
-        if (ko + 3 < outter_iters_k) {
-            loadSmemAndCommit(SA4, SB4, A, B, ko + 3, M, N, K);
+        if (ko + 2 < outter_iters_k) {
+            loadSmemAndCommit(SA3, SB3, A, B, ko + 2, M, N, K);
         }
         warp_mma(frag_a, frag_b, accum, SA1, SB1, inner_iters_k, frags_m, frags_n);
 
         asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
         __syncthreads();
-        if (ko + 4 < outter_iters_k) {
-            loadSmemAndCommit(SA1, SB1, A, B, ko + 4, M, N, K);
+        if (ko + 3 < outter_iters_k) {
+            loadSmemAndCommit(SA1, SB1, A, B, ko + 3, M, N, K);
         }
         warp_mma(frag_a, frag_b, accum, SA2, SB2, inner_iters_k, frags_m, frags_n);
 
         asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
         __syncthreads();
-        if (ko + 5 < outter_iters_k) {
-            loadSmemAndCommit(SA2, SB2, A, B, ko + 5, M, N, K);
+        if (ko + 4 < outter_iters_k) {
+            loadSmemAndCommit(SA2, SB2, A, B, ko + 4, M, N, K);
         }
         warp_mma(frag_a, frag_b, accum, SA3, SB3, inner_iters_k, frags_m, frags_n);
-
-        asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
-        __syncthreads();
-        if (ko + 6 < outter_iters_k) {
-            loadSmemAndCommit(SA3, SB3, A, B, ko + 6, M, N, K);
-        }
-        warp_mma(frag_a, frag_b, accum, SA4, SB4, inner_iters_k, frags_m, frags_n);
     }
 
-    // the last 4 iterations
+    // the last 3 iterations
     {
-        int ko = (outter_iters_k / 4 - 1) * 4;
+        int ko = (outter_iters_k / 3 - 1) * 3;
 
         if (ko < outter_iters_k) {
             warp_mma(frag_a, frag_b, accum, SA1, SB1, inner_iters_k, frags_m, frags_n);
         }
         if (ko + 1 < outter_iters_k) {
             warp_mma(frag_a, frag_b, accum, SA2, SB2, inner_iters_k, frags_m, frags_n);
-        }
-        if (ko + 2 < outter_iters_k) {
-            warp_mma(frag_a, frag_b, accum, SA3, SB3, inner_iters_k, frags_m, frags_n);
         }
     }
 
