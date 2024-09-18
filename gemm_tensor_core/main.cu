@@ -11,10 +11,15 @@
 int STAGES = 1;
 int MULTI_THREADING = 1;
 
+template <
+    int bm = 128, int bn = 128, int bk = 32, 
+    int wm = 64, int wn = 64, int wk = 16,
+    int wmma_m = 16, int wmma_n = 16, int wmma_k = 16
+>
 extern __global__ void matmul(
     half *A, half *B, half *C, 
-    int M, int N, int K, 
-    float alpha, float beta
+    const int M, const int N, const int K, 
+    const float alpha, const float beta
 );
 
 float alpha = 1.0;
@@ -74,42 +79,36 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    srand(time(NULL));
-    half *hA = (half *)malloc(M * K * 2);
-    half *hB = (half *)malloc(K * N * 2);
-    half *hC = (half *)malloc(M * N * 2);
-    half *h_cublas = (half *)malloc(M * N * 2);
+    srand(666233);
+    half *hA = reinterpret_cast<half *>(malloc(M * K * sizeof(half)));
+    half *hB = reinterpret_cast<half *>(malloc(K * N * sizeof(half)));
+    half *hC = reinterpret_cast<half *>(malloc(M * N * sizeof(half)));
+    half *h_cublas = reinterpret_cast<half *>(malloc(M * N * sizeof(half)));
 
-    for (int i = 0; i < M; ++i) {
-        for (int j = 0; j < K; ++j) {
-            hA[i * K + j] = __float2half(randFP32());
-        }
-        for (int j = 0; j < N; ++j) {
-            hC[i * N + j] = (float)(0);
-            h_cublas[i * N + j] = (float)(0);
-        }
+    for (int i = 0; i < M * K; ++i) {
+        hA[i] = __float2half(randFP32());
     }
 
-    for (int k = 0; k < K; ++k) {
-        for (int n = 0; n < N; ++n) {
-            hB[n * K + k] = __float2half(randFP32());
-        }
+    for (int i = 0; i < K * N; ++i) {
+        hB[i] = __float2half(randFP32());
     }
 
-    // cpuMatmul(cpu_result, hA, hB, M, N, K);
+    for (int i = 0; i < M * N; ++i) {
+        hC[i] = __float2half(.0f);
+    }
+
     cublasMatmul(h_cublas, hA, hB, M, N, K);
-
-    puts("CPU matmul done!\n");
+    puts("cublas matmul done!\n");
 
     half *dA, *dB, *dC;
 
-    CUDA_CHECK(cudaMalloc(&dA, M * K * 2));
-    CUDA_CHECK(cudaMalloc(&dB, K * N * 2));
-    CUDA_CHECK(cudaMalloc(&dC, M * N * 2));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&dA), M * K * sizeof(half)));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&dB), K * N * sizeof(half)));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&dC), M * N * sizeof(half)));
 
-    CUDA_CHECK(cudaMemcpy(dA, hA, M * K * 2, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(dB, hB, K * N * 2, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(dC, hC, M * N * 2, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(dA, hA, M * K * sizeof(half), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(dB, hB, K * N * sizeof(half), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(dC, hC, M * N * sizeof(half), cudaMemcpyHostToDevice));
 
     dim3 dimBlock(block_tile_k, 2 * MULTI_THREADING, 2);
     dim3 dimGrid((N + block_tile_n - 1) / block_tile_n, (M + block_tile_m - 1) / block_tile_m);
@@ -119,7 +118,7 @@ int main(int argc, char *argv[]) {
     if (smem_size >= (48 << 10)) {
         CUDA_CHECK(
             cudaFuncSetAttribute(
-                matmul,
+                matmul<128, 128, 32, 64, 64, 16, 16, 16, 16>,
                 cudaFuncAttributeMaxDynamicSharedMemorySize,
                 smem_size
             )
@@ -132,13 +131,13 @@ int main(int argc, char *argv[]) {
 
     // warmup
     for (int i = 0; i < iterations / 20 + 1; ++i) {
-        matmul<<<dimGrid, dimBlock, smem_size>>>(dA, dB, dC, M, N, K, alpha, beta);
+        matmul<128, 128, 32, 64, 64, 16, 16, 16, 16><<<dimGrid, dimBlock, smem_size>>>(dA, dB, dC, M, N, K, alpha, beta);
     }
     cudaDeviceSynchronize();
 
     cudaEventRecord(start);
     for (int i = 0; i < iterations; ++i) {
-        matmul<<<dimGrid, dimBlock, smem_size>>>(dA, dB, dC, M, N, K, alpha, beta);
+        matmul<128, 128, 32, 64, 64, 16, 16, 16, 16><<<dimGrid, dimBlock, smem_size>>>(dA, dB, dC, M, N, K, alpha, beta);
     }
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);

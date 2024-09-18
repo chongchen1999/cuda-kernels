@@ -197,7 +197,7 @@ __device__ __forceinline__ void storeAccum(
     }
 }
 
-__device__ __forceinline__ void warp_mma(
+__device__ __forceinline__ void warpMma(
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmma_m, wmma_n, wmma_k, half, nvcuda::wmma::row_major> *frag_a, 
     nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmma_m, wmma_n, wmma_k, half, nvcuda::wmma::col_major> *frag_b, 
     nvcuda::wmma::fragment<nvcuda::wmma::accumulator, wmma_m, wmma_n, wmma_k, float> *accum,
@@ -287,21 +287,21 @@ __global__ void matmul(
         if (ko + 2 < outter_iters_k) {
             loadSmemAndCommit(SA3, SB3, A, B, ko + 2, M, N, K);
         }
-        warp_mma(frag_a, frag_b, accum, SA1, SB1, inner_iters_k, frags_m, frags_n);
+        warpMma(frag_a, frag_b, accum, SA1, SB1, inner_iters_k, frags_m, frags_n);
 
         asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
         __syncthreads();
         if (ko + 3 < outter_iters_k) {
             loadSmemAndCommit(SA1, SB1, A, B, ko + 3, M, N, K);
         }
-        warp_mma(frag_a, frag_b, accum, SA2, SB2, inner_iters_k, frags_m, frags_n);
+        warpMma(frag_a, frag_b, accum, SA2, SB2, inner_iters_k, frags_m, frags_n);
 
         asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
         __syncthreads();
         if (ko + 4 < outter_iters_k) {
             loadSmemAndCommit(SA2, SB2, A, B, ko + 4, M, N, K);
         }
-        warp_mma(frag_a, frag_b, accum, SA3, SB3, inner_iters_k, frags_m, frags_n);
+        warpMma(frag_a, frag_b, accum, SA3, SB3, inner_iters_k, frags_m, frags_n);
     }
 
     // the last 3 iterations
@@ -309,10 +309,10 @@ __global__ void matmul(
         int ko = (outter_iters_k / 3 - 1) * 3;
 
         if (ko < outter_iters_k) {
-            warp_mma(frag_a, frag_b, accum, SA1, SB1, inner_iters_k, frags_m, frags_n);
+            warpMma(frag_a, frag_b, accum, SA1, SB1, inner_iters_k, frags_m, frags_n);
         }
         if (ko + 1 < outter_iters_k) {
-            warp_mma(frag_a, frag_b, accum, SA2, SB2, inner_iters_k, frags_m, frags_n);
+            warpMma(frag_a, frag_b, accum, SA2, SB2, inner_iters_k, frags_m, frags_n);
         }
     }
 

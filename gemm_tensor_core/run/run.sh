@@ -1,5 +1,5 @@
 #cublas
-#nvcc -arch=sm_86 ../cublas_main.cu -lcublas -o cublas_main && ./cublas_main
+nvcc -arch=sm_86 ../cublas_main.cu -lcublas -o cublas_main && ./cublas_main
 
 # nvcc -arch=sm_86 -Xcompiler -fopenmp ../wmma_base.cu ../main.cu -o wmma_base && ./wmma_base
 # nvcc -arch=sm_86 -Xcompiler -fopenmp ../wmma_4stage.cu ../main.cu -o wmma_4stage && ./wmma_4stage
