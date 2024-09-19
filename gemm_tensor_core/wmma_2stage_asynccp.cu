@@ -92,35 +92,6 @@ template <
     int wm = 64, int wn = 64, int wk = 16,
     int wmma_m = 16, int wmma_n = 16, int wmma_k = 16
 >
-__device__ __forceinline__ void loadSmemC(float *smem, half *C, int M, int N) {
-    // load 128 * 128
-    const int bx = blockIdx.x;
-    const int by = blockIdx.y;
-    const int lane_id = threadIdx.x;
-    const int warp_x = threadIdx.y;
-    const int warp_y = threadIdx.z;
-    const int tid = (warp_y << 6) + (warp_x << 5) + lane_id;
-
-    #pragma unroll
-    for (int i = 0; i < bm; ++i) {
-        const int row = i;
-        const int col = tid;
-
-        // layout: [row_out, col_out, row_in, col_in] = [8, 8, 16, 16]
-        const int row_o = row >> 4;
-        const int col_o = col >> 4;
-        const int row_i = row & 15;
-        const int col_i = col & 15;
-        smem[(row_o << 9) + (col_o << 8) + (row_i << 4) + col_i] = 
-            static_cast<float>(C[(by * bm + row) * N + bx * bn + col]);
-    }
-}
-
-template <
-    int bm = 128, int bn = 128, int bk = 32, 
-    int wm = 64, int wn = 64, int wk = 16,
-    int wmma_m = 16, int wmma_n = 16, int wmma_k = 16
->
 __device__ __forceinline__ void storeSmemC(half *C, float *smem, int M, int N) {
     // load 128 * 128
     const int bx = blockIdx.x;
