@@ -11,13 +11,13 @@
     }                                                                     \
 }
 
+// inline int M = 5376;
+// inline int N = 5376;
+// inline int K = 2048;
+
 inline int M = 5376;
 inline int N = 5376;
-inline int K = 2048;
-
-// inline int M = 512;
-// inline int N = 512;
-// inline int K = 512;
+inline int K = 4096;
 
 inline constexpr int warpSize = 32;
 

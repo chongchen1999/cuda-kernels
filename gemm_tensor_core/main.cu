@@ -14,7 +14,8 @@ int MULTI_THREADING = 1;
 template <
     int bm = 128, int bn = 128, int bk = 32, 
     int wm = 64, int wn = 64, int wk = 16,
-    int wmma_m = 16, int wmma_n = 16, int wmma_k = 16
+    int wmma_m = 16, int wmma_n = 16, int wmma_k = 16, 
+    int warps_m = 2, int warps_n = 2
 >
 extern __global__ void matmul(
     half *A, half *B, half *C, 
@@ -110,15 +111,15 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaMemcpy(dB, hB, K * N * sizeof(half), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(dC, hC, M * N * sizeof(half), cudaMemcpyHostToDevice));
 
-    dim3 dimBlock(block_tile_k, 2 * MULTI_THREADING, 2);
     dim3 dimGrid((N + block_tile_n - 1) / block_tile_n, (M + block_tile_m - 1) / block_tile_m);
+    dim3 dimBlock(block_tile_k, 2 * MULTI_THREADING, 2);
 
-    int smem_size = MAX(STAGES * 128 * 32 * 2 * 2, 128 * 128 * 4);
+    int smem_size = MAX(STAGES * 128 * 32 * 2 * sizeof(half), 128 * 128 * 4);
     
     if (smem_size >= (48 << 10)) {
         CUDA_CHECK(
             cudaFuncSetAttribute(
-                matmul<128, 128, 32, 64, 64, 16, 16, 16, 16>,
+                matmul<128, 128, 32, 64, 64, 16, 16, 16, 16, 2, 2>,
                 cudaFuncAttributeMaxDynamicSharedMemorySize,
                 smem_size
             )
@@ -131,13 +132,13 @@ int main(int argc, char *argv[]) {
 
     // warmup
     for (int i = 0; i < iterations / 20 + 1; ++i) {
-        matmul<128, 128, 32, 64, 64, 16, 16, 16, 16><<<dimGrid, dimBlock, smem_size>>>(dA, dB, dC, M, N, K, alpha, beta);
+        matmul<128, 128, 32, 64, 64, 16, 16, 16, 16, 2, 2><<<dimGrid, dimBlock, smem_size>>>(dA, dB, dC, M, N, K, alpha, beta);
     }
     cudaDeviceSynchronize();
 
     cudaEventRecord(start);
     for (int i = 0; i < iterations; ++i) {
-        matmul<128, 128, 32, 64, 64, 16, 16, 16, 16><<<dimGrid, dimBlock, smem_size>>>(dA, dB, dC, M, N, K, alpha, beta);
+        matmul<128, 128, 32, 64, 64, 16, 16, 16, 16, 2, 2><<<dimGrid, dimBlock, smem_size>>>(dA, dB, dC, M, N, K, alpha, beta);
     }
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
