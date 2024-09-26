@@ -43,7 +43,7 @@ __global__ void forward_kernel(
         }
         __syncthreads();
 
-        for (int j = 0; j < tile_num_kv; j++)  {
+        for (int j = 0; j < tile_num_kv; j++) {
             #pragma unroll
             for (int x = 0; x < d; x += 4) {
                 const int head_offset = tid * d + x;
