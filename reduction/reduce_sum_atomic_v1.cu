@@ -12,39 +12,7 @@ struct SumOp {
     __device__ __forceinline__ T operator()(const T &a, const T &b) const {
         return a + b;
     }
-    __device__ __forceinline__ void operator()(T *a, const T &b) const {
-        atomicAdd(a, b);    
-    }
 };
-
-template <typename T, template <typename> class ReductionOp = SumOp>
-__device__ __forceinline__ void warpReduce(T &val) {
-    #pragma unroll
-    for (unsigned int mask = 16; mask > 0; mask >>= 1) {
-        val = ReductionOp<T>()(val, __shfl_xor_sync(0xffffffff, val, mask));
-    }
-}
-
-template <typename T, template <typename> class ReductionOp = SumOp>
-__device__ void blockReduce(T &val) {
-    const int tid = threadIdx.x;
-    const int warp_id = tid >> 5;
-    const int lane_id = tid & 31;
-    const int warp_num = (blockDim.x + 31) >> 5;
-
-    __shared__ T warp_reduced[32];
-    
-    warpReduce<T, ReductionOp>(val);
-    if (lane_id == 0) {
-        warp_reduced[warp_id] = val;
-    }
-    __syncthreads();
-
-    if (warp_id == 0) {
-        val = lane_id < warp_num ? warp_reduced[lane_id] : ReductionOp<T>::identity;
-        warpReduce<T, ReductionOp>(val);
-    }
-}
 
 template <
     typename T,
@@ -54,22 +22,15 @@ __global__ void DeviceReduce(T *data, int N, T *device_result) {
     const int tid = threadIdx.x;
     const int gid = blockIdx.x * blockDim.x + tid;
     const int grid_stride = blockDim.x * gridDim.x;
-    T block_reduced = static_cast<T>(0);
 
     #pragma unroll
     for (int i = gid; i < N; i += grid_stride) {
-        block_reduced = ReductionOp<T>()(block_reduced, data[i]);
-    }
-
-    blockReduce<T, ReductionOp>(block_reduced);
-
-    if (tid == 0) {
-        ReductionOp<T>()(device_result, block_reduced);
+        atomicAdd(device_result, data[i]);
     }
 }
 
 int main() {
-    puts("Test: Common Reduction implementation!");
+    puts("Global memory atomicAdd Test!");
     const int N = 8192;
     const int iterations = 1000;
 
@@ -110,7 +71,6 @@ int main() {
     printf("Time: %f ms\n", milliseconds);
     
     cudaMemcpy(host_gpu_sum, device_gpu_sum, sizeof(float), cudaMemcpyDeviceToHost);
-
     std::cout << std::fixed << std::setprecision(4); // Set fixed-point notation and precision
 
     std::cout << "cpu result: " << cpu_sum << std::endl;

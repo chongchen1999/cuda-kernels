@@ -1,0 +1,2 @@
+/home/tourist/AI-HPC Projects/cuda-kernels/build/CMakeFiles/edit_cache.dir
+/home/tourist/AI-HPC Projects/cuda-kernels/build/CMakeFiles/rebuild_cache.dir

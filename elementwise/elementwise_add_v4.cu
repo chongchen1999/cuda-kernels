@@ -4,7 +4,7 @@
 #include <memory>
 
 const int N = 1 << 25;
-const int iterations = 2000;
+const int iterations = 20;
 
 __global__ void addKernel_v4(float *a, float *b, float *result) {
     const int vec_gid = (blockIdx.x * blockDim.x + threadIdx.x) * 4;
