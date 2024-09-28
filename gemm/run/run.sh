@@ -1,0 +1,1 @@
+nvcc -arch=sm_86 -diag-suppress=177 ../naive_matmul.cu ../main.cu ../cublas_matmul.cu -lcublas -o naive_matmul && ./naive_matmul

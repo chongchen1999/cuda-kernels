@@ -88,6 +88,7 @@
         "variant": "cpp",
         "__locale": "cpp",
         "__string": "cpp",
-        "__nullptr": "cpp"
+        "__nullptr": "cpp",
+        "cassert": "cpp"
     }
 }
