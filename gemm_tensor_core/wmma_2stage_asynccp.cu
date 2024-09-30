@@ -299,7 +299,7 @@ template <
     int wmma_m = 16, int wmma_n = 16, int wmma_k = 16,
     int warps_m = 2, int warps_n = 2
 >
-__device__ __forceinline__ void warpMma(
+__device__ __forceinline__ void warpMMA(
     wmma::fragment<wmma::matrix_a, wmma_m, wmma_n, wmma_k, half, wmma::row_major> *frag_a, 
     wmma::fragment<wmma::matrix_b, wmma_m, wmma_n, wmma_k, half, wmma::col_major> *frag_b, 
     wmma::fragment<wmma::accumulator, wmma_m, wmma_n, wmma_k, float> *accum,
@@ -393,22 +393,22 @@ __global__ void matmul(
         loadSmemAndCommit(SA2, SB2, A, B, ko + 1, M, N, K);
         asm volatile("cp.async.wait_group %0;\n" ::"n"(1));
         __syncthreads();
-        warpMma(frag_a, frag_b, accum, SA1, SB1);
+        warpMMA(frag_a, frag_b, accum, SA1, SB1);
 
         loadSmemAndCommit(SA1, SB1, A, B, ko + 2, M, N, K);
         asm volatile("cp.async.wait_group %0;\n" ::"n"(1));
         __syncthreads();
-        warpMma(frag_a, frag_b, accum, SA2, SB2);
+        warpMMA(frag_a, frag_b, accum, SA2, SB2);
     }
 
     {
         int ko = (block_iters / 2 - 1) * 2;
 
         if (ko < block_iters) {
-            warpMma(frag_a, frag_b, accum, SA1, SB1);
+            warpMMA(frag_a, frag_b, accum, SA1, SB1);
         }
         if (ko + 1 < block_iters) {
-            warpMma(frag_a, frag_b, accum, SA2, SB2);
+            warpMMA(frag_a, frag_b, accum, SA2, SB2);
         }
     }
 
